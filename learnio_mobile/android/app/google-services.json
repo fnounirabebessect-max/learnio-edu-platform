@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "633537696725",
+    "project_id": "learnio-edu-platform",
+    "storage_bucket": "learnio-edu-platform.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:633537696725:android:835021245a82136aef635c",
+        "android_client_info": {
+          "package_name": "com.example.untitled1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAhLcWAUVXoTWv8GUGTpp92eTvWwR8Rvyc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
