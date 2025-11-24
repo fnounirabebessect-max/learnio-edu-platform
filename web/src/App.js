@@ -1,21 +1,28 @@
-import React, { useEffect } from "react";
-import { db } from "./api/firebaseConfig";
-import { collection, getDocs } from "firebase/firestore";
+import React from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider } from "./context/authContext";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Dashboard from "./pages/Dashboard";
+import ForgotPassword from "./pages/ForgotPassword"; // Fixed import
+import ProtectedRoute from "./components/protectedRoute";
 
 function App() {
-  useEffect(() => {
-    const loadCourses = async () => {
-      const snapshot = await getDocs(collection(db, "courses"));
-      console.log("Courses:", snapshot.docs.map(doc => doc.data()));
-    };
-    loadCourses();
-  }, []);
-
   return (
-    <div>
-      <h1>LEARNIO Platform</h1>
-      <p>Firebase is connected ✅</p>
-    </div>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Navigate to="/register" replace />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} /> {/* Add route */}
+          <Route
+            path="/dashboard"
+            element={<ProtectedRoute><Dashboard /></ProtectedRoute>}
+          />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 
