@@ -1,14 +1,15 @@
-// Profile.jsx - UPDATED WITH CERTIFICATES AND REVIEWS
+// Profile.jsx - COMPLETE WITH REVIEW SYSTEM
 import React, { useState, useEffect } from 'react';
-import { auth, db } from '../../firebase/firebase'
+import { auth, db } from '../../firebase/firebase';
 import { signOut, updateProfile, updateEmail, updatePassword } from 'firebase/auth';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
 import { 
   FaUser, FaEnvelope, FaLock, FaEdit, FaSave, FaTimes, FaSignOutAlt, 
   FaBook, FaChartLine, FaClock, FaCheckCircle, FaSpinner, FaCertificate,
-  FaStar, FaComment
+  FaStar, FaComment, FaTrash, FaRegStar, FaStarHalfAlt
 } from 'react-icons/fa';
 import './profile.css';
+import { getDashboardStats, getUserReviews, deleteReview } from '../../api/course';
 
 const Profile = () => {
   const [user, setUser] = useState(null);
@@ -18,7 +19,8 @@ const Profile = () => {
     totalCourses: 0,
     completedCourses: 0,
     averageProgress: 0,
-    totalMinutes: 0
+    totalMinutes: 0,
+    reviewsCount: 0
   });
   const [editMode, setEditMode] = useState({
     displayName: false,
@@ -37,114 +39,137 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [certificates, setCertificates] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [deletingReviewId, setDeletingReviewId] = useState(null);
 
-  // Simple function to get user stats
-  const getUserStats = async (userId) => {
-    try {
-      // Get enrollments
-      const enrollmentsRef = collection(db, "enrollments");
-      const q = query(enrollmentsRef, where("userId", "==", userId));
-      const snapshot = await getDocs(q);
-      
-      const enrollments = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Get course details for each enrollment
-      const courses = [];
-      let totalProgress = 0;
-      let totalMinutes = 0;
-      let completedCount = 0;
-      
-      for (const enrollment of enrollments) {
-        try {
-          const courseRef = doc(db, "courses", enrollment.courseId);
-          const courseSnap = await getDoc(courseRef);
-          
-          if (courseSnap.exists()) {
-            const courseData = courseSnap.data();
-            
-            // Get progress
-            const progressRef = doc(db, "progress", `${userId}_${enrollment.courseId}`);
-            const progressSnap = await getDoc(progressRef);
-            const progress = progressSnap.exists() ? progressSnap.data().progress || 0 : 0;
-            
-            totalProgress += progress;
-            totalMinutes += courseData.duration || 0;
-            if (enrollment.completed) completedCount++;
-            
-            courses.push({
-              id: courseSnap.id,
-              ...courseData,
-              enrollmentId: enrollment.id,
-              enrolledAt: enrollment.enrolledAt || new Date().toISOString(),
-              completed: enrollment.completed || false,
-              progress: progress
-            });
-          }
-        } catch (error) {
-          console.error(`Error loading course ${enrollment.courseId}:`, error);
+  // Review modal states
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [reviewForm, setReviewForm] = useState({
+    rating: 5,
+    comment: ''
+  });
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  // Load user data
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        setFormData({
+          displayName: currentUser.displayName || '',
+          email: currentUser.email || ''
+        });
+        
+        // Load user stats
+        await loadUserStats(currentUser.uid);
+        
+        // Get additional user data
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setFormData(prev => ({
+            ...prev,
+            ...userData
+          }));
         }
       }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Load user stats
+  const loadUserStats = async (userId) => {
+    try {
+      const statsData = await getDashboardStats(userId);
+      setStats(statsData);
+      setEnrolledCourses(statsData.enrolledCourses);
       
-      setEnrolledCourses(courses);
-      
-      // Calculate stats
-      const totalCourses = courses.length;
-      const averageProgress = totalCourses > 0 ? Math.round(totalProgress / totalCourses) : 0;
-      
-      setStats({
-        totalCourses,
-        completedCourses: completedCount,
-        averageProgress,
-        totalMinutes
-      });
+      // Load user reviews
+      await loadUserReviews(userId);
       
     } catch (error) {
-      console.error("Error getting user stats:", error);
+      console.error("Error loading user stats:", error);
     }
   };
 
-  // Get user's reviews
-  const getUserReviews = async (userId) => {
+  // Load user reviews
+  const loadUserReviews = async (userId) => {
     try {
-      const reviewsRef = collection(db, "reviews");
-      const q = query(reviewsRef, where("userId", "==", userId));
-      const snapshot = await getDocs(q);
-      
-      const reviewsList = await Promise.all(
-        snapshot.docs.map(async (reviewDoc) => {
-          const reviewData = reviewDoc.data();
-          
-          // Get course details
-          try {
-            const courseRef = doc(db, "courses", reviewData.courseId);
-            const courseSnap = await getDoc(courseRef);
-            
-            if (courseSnap.exists()) {
-              return {
-                id: reviewDoc.id,
-                ...reviewData,
-                courseTitle: courseSnap.data().title,
-                courseCategory: courseSnap.data().category
-              };
-            }
-          } catch (error) {
-            console.error("Error getting course for review:", error);
-          }
-          
-          return {
-            id: reviewDoc.id,
-            ...reviewData,
-            courseTitle: "Unknown Course"
-          };
-        })
-      );
-      
-      setReviews(reviewsList);
+      setLoadingReviews(true);
+      const userReviews = await getUserReviews(userId);
+      setReviews(userReviews);
     } catch (error) {
-      console.error("Error getting user reviews:", error);
+      console.error("Error loading user reviews:", error);
+      setReviews([]);
+    } finally {
+      setLoadingReviews(false);
+    }
+  };
+
+  // Handle review submission
+  const handleSubmitReview = async () => {
+    if (!selectedCourse || !reviewForm.comment.trim()) {
+      alert('Please write a review comment');
+      return;
+    }
+
+    setSubmittingReview(true);
+    try {
+      // Import the submitCourseReview function
+      const { submitCourseReview } = await import('../../api/course');
+      
+      const reviewData = {
+        rating: reviewForm.rating,
+        comment: reviewForm.comment,
+        userName: user.displayName || user.email.split('@')[0]
+      };
+
+      await submitCourseReview(user.uid, selectedCourse.id, reviewData);
+      
+      // Refresh data
+      await loadUserStats(user.uid);
+      
+      // Reset form
+      setReviewForm({ rating: 5, comment: '' });
+      setSelectedCourse(null);
+      setShowReviewModal(false);
+      
+      setSuccess('Review submitted successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+      
+    } catch (error) {
+      console.error('Error submitting review:', error);
+      setErrors({ form: 'Error: ' + error.message });
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  // Handle delete review
+  const handleDeleteReview = async (review) => {
+    if (!window.confirm("Are you sure you want to delete this review?")) {
+      return;
+    }
+
+    setDeletingReviewId(review.id);
+    try {
+      await deleteReview(review.id, user.uid, review.courseId);
+      
+      // Refresh reviews
+      await loadUserStats(user.uid);
+      
+      setSuccess('Review deleted successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+      
+    } catch (error) {
+      console.error('Error deleting review:', error);
+      setErrors({ form: 'Error: ' + error.message });
+    } finally {
+      setDeletingReviewId(null);
     }
   };
 
@@ -163,38 +188,6 @@ const Profile = () => {
     
     setCertificates(certs);
   };
-
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        setFormData({
-          displayName: currentUser.displayName || '',
-          email: currentUser.email || ''
-        });
-        
-        // Get user stats
-        await getUserStats(currentUser.uid);
-        
-        // Get user reviews
-        await getUserReviews(currentUser.uid);
-        
-        // Get additional user data
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setFormData(prev => ({
-            ...prev,
-            ...userData
-          }));
-        }
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   useEffect(() => {
     if (user && enrolledCourses.length > 0) {
@@ -323,8 +316,6 @@ const Profile = () => {
 
   // View certificate
   const viewCertificate = (certificate) => {
-    // In a real app, this would navigate to a certificate page
-    // For now, we'll show a simple modal-like alert
     alert(`Certificate of Completion\n\n` +
           `This certifies that\n` +
           `${certificate.userName}\n` +
@@ -336,8 +327,44 @@ const Profile = () => {
 
   // Download certificate (simulated)
   const downloadCertificate = (certificate) => {
-    // In a real app, this would generate and download a PDF
     alert(`Downloading certificate for ${certificate.courseTitle}...`);
+  };
+
+  // Render rating stars
+  const renderRatingStars = (rating) => {
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+    
+    return (
+      <div className="rating-stars">
+        {[...Array(5)].map((_, i) => {
+          if (i < fullStars) {
+            return <FaStar key={i} className="star full" />;
+          } else if (i === fullStars && hasHalfStar) {
+            return <FaStarHalfAlt key={i} className="star half" />;
+          } else {
+            return <FaRegStar key={i} className="star empty" />;
+          }
+        })}
+      </div>
+    );
+  };
+
+  // Format timestamp
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return "Recently";
+    
+    try {
+      if (timestamp.toDate) {
+        return timestamp.toDate().toLocaleDateString();
+      }
+      if (typeof timestamp === 'string') {
+        return new Date(timestamp).toLocaleDateString();
+      }
+      return "Recently";
+    } catch (error) {
+      return "Recently";
+    }
   };
 
   if (loading) {
@@ -420,7 +447,7 @@ const Profile = () => {
               <FaComment />
             </div>
             <div className="stat-content">
-              <h3>{reviews.length}</h3>
+              <h3>{stats.reviewsCount}</h3>
               <p>Reviews</p>
             </div>
           </div>
@@ -473,6 +500,16 @@ const Profile = () => {
                         <div className="course-info">
                           <h4>{course.title}</h4>
                           <p className="course-category">{course.category || 'General'}</p>
+                          <div className="course-rating-small">
+                            {course.rating > 0 ? (
+                              <>
+                                {renderRatingStars(course.rating)}
+                                <span className="rating-value">{course.rating.toFixed(1)}</span>
+                              </>
+                            ) : (
+                              <span className="no-rating">No ratings yet</span>
+                            )}
+                          </div>
                         </div>
                         <div className="course-progress">
                           <div className="progress-bar">
@@ -483,6 +520,17 @@ const Profile = () => {
                           </div>
                           <span className="progress-text">{course.progress}%</span>
                         </div>
+                        {course.completed && !course.hasReviewed && (
+                          <button 
+                            className="review-course-btn"
+                            onClick={() => {
+                              setSelectedCourse(course);
+                              setShowReviewModal(true);
+                            }}
+                          >
+                            <FaComment /> Review
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -524,6 +572,11 @@ const Profile = () => {
                         <span className="meta-item">
                           Enrolled: {new Date(course.enrolledAt).toLocaleDateString()}
                         </span>
+                        {course.rating > 0 && (
+                          <span className="meta-item">
+                            <FaStar /> Rating: {course.rating.toFixed(1)}
+                          </span>
+                        )}
                       </div>
                       <div className="course-progress-section">
                         <div className="progress-info">
@@ -542,17 +595,17 @@ const Profile = () => {
                           className="action-btn"
                           onClick={() => window.location.href = `/courses/${course.id}`}
                         >
-                          {course.completed ? 'Review Course' : 'Continue Learning'}
+                          {course.completed ? 'View Course' : 'Continue Learning'}
                         </button>
-                        {course.completed && (
+                        {course.completed && !course.hasReviewed && (
                           <button 
                             className="action-btn outline"
                             onClick={() => {
-                              const cert = certificates.find(c => c.courseId === course.id);
-                              if (cert) viewCertificate(cert);
+                              setSelectedCourse(course);
+                              setShowReviewModal(true);
                             }}
                           >
-                            <FaCertificate /> View Certificate
+                            <FaComment /> Write Review
                           </button>
                         )}
                       </div>
@@ -614,30 +667,41 @@ const Profile = () => {
 
           {activeTab === 'reviews' && (
             <div className="reviews-tab">
-              {reviews.length > 0 ? (
+              {loadingReviews ? (
+                <div className="reviews-loading">
+                  <FaSpinner className="spinner" />
+                  <p>Loading your reviews...</p>
+                </div>
+              ) : reviews.length > 0 ? (
                 <div className="reviews-list">
                   {reviews.map(review => (
                     <div key={review.id} className="review-card">
                       <div className="review-header">
                         <div className="review-course">
-                          <h4>{review.courseTitle}</h4>
-                          <span className="review-category">{review.courseCategory}</span>
+                          <h4>{review.courseTitle || 'Course'}</h4>
+                          <span className="review-category">{review.courseCategory || 'General'}</span>
                         </div>
                         <div className="review-rating">
-                          {[...Array(5)].map((_, i) => (
-                            <FaStar 
-                              key={i} 
-                              className={`star ${i < review.rating ? 'filled' : ''}`}
-                            />
-                          ))}
+                          {renderRatingStars(review.rating)}
                           <span className="rating-value">{review.rating}.0</span>
                         </div>
                       </div>
                       <p className="review-comment">{review.comment}</p>
                       <div className="review-meta">
                         <span className="review-date">
-                          Reviewed: {new Date(review.createdAt).toLocaleDateString()}
+                          Reviewed: {formatTimestamp(review.createdAt)}
                         </span>
+                        <button 
+                          className="delete-review-btn"
+                          onClick={() => handleDeleteReview(review)}
+                          disabled={deletingReviewId === review.id}
+                        >
+                          {deletingReviewId === review.id ? (
+                            <FaSpinner className="spinner" />
+                          ) : (
+                            <FaTrash />
+                          )}
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -835,6 +899,81 @@ const Profile = () => {
           )}
         </div>
       </div>
+
+      {/* Review Modal */}
+      {showReviewModal && selectedCourse && (
+        <div className="modal-overlay">
+          <div className="modal-container">
+            <div className="modal-header">
+              <h3>Review: {selectedCourse.title}</h3>
+              <button 
+                className="modal-close-btn"
+                onClick={() => {
+                  setShowReviewModal(false);
+                  setSelectedCourse(null);
+                  setReviewForm({ rating: 5, comment: '' });
+                }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="modal-content">
+              <div className="review-form">
+                <div className="rating-section">
+                  <label>Your Rating:</label>
+                  <div className="stars-input">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        className={`star-btn ${reviewForm.rating >= star ? 'active' : ''}`}
+                        onClick={() => setReviewForm({...reviewForm, rating: star})}
+                      >
+                        ★
+                      </button>
+                    ))}
+                    <span className="rating-text">{reviewForm.rating}.0 stars</span>
+                  </div>
+                </div>
+                
+                <div className="comment-section">
+                  <label htmlFor="review-comment">Your Review:</label>
+                  <textarea
+                    id="review-comment"
+                    className="review-textarea"
+                    value={reviewForm.comment}
+                    onChange={(e) => setReviewForm({...reviewForm, comment: e.target.value})}
+                    placeholder="Share your experience with this course..."
+                    rows={5}
+                  />
+                </div>
+                
+                <div className="modal-actions">
+                  <button
+                    className="cancel-btn"
+                    onClick={() => {
+                      setShowReviewModal(false);
+                      setSelectedCourse(null);
+                      setReviewForm({ rating: 5, comment: '' });
+                    }}
+                    disabled={submittingReview}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="submit-btn"
+                    onClick={handleSubmitReview}
+                    disabled={submittingReview || !reviewForm.comment.trim()}
+                  >
+                    {submittingReview ? 'Submitting...' : 'Submit Review'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,11 +1,15 @@
+// src/pages/course/Courses.jsx - UPDATED WITH REAL REVIEWS
 import React, { useEffect, useState } from "react";
 import "./Courses.css";
 import { useAuth } from "../../context/authContext";
-import { getAllCourses, enrollUserInCourse, getEnrollmentStatus } from "../../api/course";
+import { useCart } from "../../context/CartContext";
+import { getAllCourses, enrollUserInCourse, getEnrollmentStatus, purchaseCourse } from "../../api/course";
 import { Link } from "react-router-dom";
+import { FaStar, FaRegStar, FaStarHalfAlt } from "react-icons/fa";
 
 export default function Courses() {
   const { currentUser } = useAuth();
+  const { addToCart, isInCart } = useCart();
   const [courses, setCourses] = useState([]);
   const [enrolled, setEnrolled] = useState({});
   const [loading, setLoading] = useState(true);
@@ -33,9 +37,9 @@ export default function Courses() {
   
   const levels = ["All Levels", "Débutant", "Intermédiaire", "Avancé"];
   const priceRanges = ["All", "Free", "Paid"];
-  const ratings = ["All", "5 stars", "4 stars & up", "3 stars & up"];
+  const ratings = ["All", "5 stars", "4 stars & up", "3 stars & up", "2 stars & up"];
 
-  // Load all courses
+  // Load all courses with reviews
   useEffect(() => {
     async function loadCourses() {
       try {
@@ -60,27 +64,57 @@ export default function Courses() {
     loadCourses();
   }, [currentUser]);
 
-  // Handle enrollment
+  // Handle enrollment for free courses
   async function handleEnroll(courseId, isFree) {
     if (!currentUser) {
       alert("You must be logged in to enroll.");
       return;
     }
 
-    if (!isFree) {
-      alert("This is a premium course. Currently only free courses are available.");
-      return;
-    }
+    if (isFree) {
+      // Free course enrollment
+      try {
+        await enrollUserInCourse(currentUser.uid, courseId);
+        setEnrolled((prev) => ({ ...prev, [courseId]: true }));
+        alert("Successfully enrolled!");
+      } catch (error) {
+        console.error("Enroll error:", error);
+        alert("Error: " + error.message);
+      }
+    } else {
+      // Paid course - redirect to PayMe (direct purchase for single course)
+      try {
+        const userData = {
+          email: currentUser.email,
+          displayName: currentUser.displayName || currentUser.email.split('@')[0]
+        };
 
-    try {
-      await enrollUserInCourse(currentUser.uid, courseId);
-      setEnrolled((prev) => ({ ...prev, [courseId]: true }));
-      alert("Successfully enrolled!");
-    } catch (error) {
-      console.error("Enroll error:", error);
-      alert("Error: " + error.message);
+        const paymentResult = await purchaseCourse(currentUser.uid, courseId, userData);
+        
+        // Redirect to PayMe payment page
+        window.location.href = paymentResult.paymentUrl;
+        
+      } catch (error) {
+        console.error("Purchase error:", error);
+        alert("Error: " + error.message);
+      }
     }
   }
+
+  // Handle add to cart
+  const handleAddToCart = (course) => {
+    if (course.isFree) {
+      // Free course - enroll directly
+      handleEnroll(course.id, true);
+    } else {
+      // Paid course - add to cart
+      if (addToCart(course)) {
+        alert(`"${course.title}" added to cart!`);
+      } else {
+        alert("Course is already in your cart!");
+      }
+    }
+  };
 
   // Handle filter changes
   const handleFilterChange = (filterType, value) => {
@@ -162,13 +196,15 @@ export default function Courses() {
     return true;
   });
 
-  // Generate rating stars
+  // Generate rating stars with React Icons
   const renderRatingStars = (rating, reviews = 0) => {
     // If rating is 0 or undefined, show "No ratings yet"
     if (!rating || rating === 0) {
       return (
         <span className="rating-stars">
-          {'☆'.repeat(5)}
+          {[...Array(5)].map((_, i) => (
+            <FaRegStar key={i} className="star-icon empty" />
+          ))}
           <span className="rating-text"> No ratings yet</span>
         </span>
       );
@@ -179,9 +215,15 @@ export default function Courses() {
     
     return (
       <span className="rating-stars">
-        {'★'.repeat(fullStars)}
-        {hasHalfStar && '½'}
-        {'☆'.repeat(5 - fullStars - (hasHalfStar ? 1 : 0))}
+        {[...Array(5)].map((_, i) => {
+          if (i < fullStars) {
+            return <FaStar key={i} className="star-icon full" />;
+          } else if (i === fullStars && hasHalfStar) {
+            return <FaStarHalfAlt key={i} className="star-icon half" />;
+          } else {
+            return <FaRegStar key={i} className="star-icon empty" />;
+          }
+        })}
         <span className="rating-text"> {rating.toFixed(1)} ({reviews} reviews)</span>
       </span>
     );
@@ -333,7 +375,7 @@ export default function Courses() {
                       By <span className="instructor-name">{course.author || "Admin"}</span>
                     </div>
                     
-                    {/* Rating */}
+                    {/* Rating - Now with real data */}
                     <div className="course-rating">
                       {renderRatingStars(course.rating, course.reviews || 0)}
                     </div>
@@ -363,17 +405,21 @@ export default function Courses() {
                         View Course
                       </Link>
 
-                      {/* Enroll button */}
+                      {/* Enroll/Add to Cart button */}
                       {enrolled[course.id] ? (
                         <button className="btn-enrolled" disabled>
                           ✓ Enrolled
                         </button>
+                      ) : isInCart(course.id) ? (
+                        <button className="btn-in-cart" disabled>
+                          🛒 In Cart
+                        </button>
                       ) : (
                         <button
-                          className="btn-enroll"
-                          onClick={() => handleEnroll(course.id, course.isFree)}
+                          className={`btn-enroll ${course.isFree ? 'btn-free' : 'btn-paid'}`}
+                          onClick={() => handleAddToCart(course)}
                         >
-                          {course.isFree ? "Enroll For Free" : "Buy Course"}
+                          {course.isFree ? "Enroll For Free" : "Add to Cart"}
                         </button>
                       )}
                     </div>

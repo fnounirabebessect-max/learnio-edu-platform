@@ -31,3 +31,33 @@ exports.Webhook = functions.https.onRequest(async (req, res) => {
     return res.status(500).send("Error");
   }
 });
+// functions/index.js
+const functions = require('firebase-functions');
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: functions.config().gmail.email,
+    pass: functions.config().gmail.password
+  }
+});
+
+exports.sendPaymentEmail = functions.https.onCall(async (data, context) => {
+  const { to, subject, html } = data;
+
+  const mailOptions = {
+    from: 'Learnio <no-reply@learnio.com>',
+    to: to,
+    subject: subject,
+    html: html
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    return { success: true };
+  } catch (error) {
+    console.error('Email send error:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to send email');
+  }
+});

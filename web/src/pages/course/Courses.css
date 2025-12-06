@@ -600,3 +600,26 @@
     font-size: 20px;
   }
 }
+/* Add these styles to Courses.css */
+
+.btn-in-cart {
+  background: #fbbf24;
+  color: #1e3a8a;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 10px;
+  cursor: not-allowed;
+  font-weight: 600;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.btn-free {
+  background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+  color: white;
+}
+
+.btn-paid {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+}
