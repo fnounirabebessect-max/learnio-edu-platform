@@ -1,165 +1,157 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState } from "react";
 import { useAuth } from "../context/authContext";
-import {
-  sendPasswordResetEmail,
-  GoogleAuthProvider,
-  signInWithPopup,
-} from "firebase/auth";
-import { auth } from "../firebase/firebase";
+import { useNavigate, Link } from "react-router-dom";
+import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
+import Card from "../components/ui/Card";
+import Loader from "../components/ui/Loader";
+import "./Login.css";
 
 const Login = () => {
-  const { login } = useAuth();
-  const navigate = useNavigate(); 
+  const { login, signInWithGoogle } = useAuth();
+  const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [message, setMessage] = useState(null);
+  const [error, setError] = useState("");
 
-  // 🧩 Connexion email + mot de passe
   const handleLogin = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
-      setMessage({ type: "error", text: "Veuillez remplir tous les champs" });
-      return;
-    }
+    setError("");
     setLoading(true);
-    setMessage(null);
 
     try {
       await login(email, password);
-      setMessage({ type: "success", text: "Connexion réussie ✅" });
       navigate("/dashboard");
-    } catch (error) {
-      setMessage({ type: "error", text: "Erreur : " + error.message });
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      setError("Incorrect email or password.");
+      console.error(err);
     }
+
+    setLoading(false);
   };
 
-  // 🔑 Navigation vers la page de réinitialisation
-  const handleForgotPasswordClick = () => {
-    navigate("/forgot-password"); // ← Navigation vers la page ForgotPassword
-  };
-
-  // 🟢 Connexion via Google
-  const handleGoogleLogin = async () => {
-    setGoogleLoading(true);
-    const provider = new GoogleAuthProvider();
+  const handleGoogleSignIn = async () => {
+    setError("");
+    setLoading(true);
+    
     try {
-      await signInWithPopup(auth, provider);
-      setMessage({ type: "success", text: "Connexion Google réussie ✅" });
+      await signInWithGoogle();
       navigate("/dashboard");
-    } catch (error) {
-      setMessage({ type: "error", text: "Erreur Google : " + error.message });
-    } finally {
-      setGoogleLoading(false);
+    } catch (err) {
+      if (err.code !== 'auth/cancelled-popup-request' && 
+          err.code !== 'auth/popup-closed-by-user') {
+        setError("Google sign-in failed. Please try again.");
+        console.error(err);
+      }
     }
+    
+    setLoading(false);
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-       
-        <div className="separator"></div>
+    <div className="auth-page">
+      {/* Background Animation */}
+      <div className="auth-background">
+        <div className="bg-shapes">
+          <div className="shape shape-1"></div>
+          <div className="shape shape-2"></div>
+          <div className="shape shape-3"></div>
+        </div>
+      </div>
 
-        {/* Titre principal */}
-        <h1 className="login-title">Bienvenue sur EduConnect</h1>
-        <p className="login-subtitle">
-          Connectez-vous pour accéder à vos cours ou créer un nouveau compte.
-        </p>
-
-        {/* Messages */}
-        {message && (
-          <div className={`message ${message.type}`}>
-            {message.text}
+      <div className="auth-container-full">
+        <div className="auth-hero">
+          <h1 className="auth-main-title">
+            Welcome Back to <span className="brand-highlight">Learnio</span>
+          </h1>
+          <p className="auth-hero-subtitle">
+            Continue your learning journey with access to thousands of courses, expert instructors, and a community of passionate learners.
+          </p>
+          <div className="auth-features">
+            <div className="auth-feature">
+              <span className="feature-icon">🎓</span>
+              <span>Access 200+ Courses</span>
+            </div>
+            <div className="auth-feature">
+              <span className="feature-icon">👨‍🏫</span>
+              <span>Learn from Experts</span>
+            </div>
+            <div className="auth-feature">
+              <span className="feature-icon">📜</span>
+              <span>Earn Certificates</span>
+            </div>
           </div>
-        )}
+        </div>
 
-        {/* Formulaire */}
-        <form onSubmit={handleLogin}>
-          {/* Champ Email */}
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <div className="input-container">
-              <div className="input-icon">
-                <div className="icon-email"></div>
-              </div>
-              <input
+        <div className="auth-form-section">
+          <Card className="auth-card-full">
+            <h2 className="auth-form-title">Login to Your Account</h2>
+            
+            <form onSubmit={handleLogin} className="auth-form-full">
+              <Input
+                label="Email Address"
                 type="email"
-                placeholder="votre.email@example.com"
+                placeholder="your@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="form-input"
+                className="auth-input-full"
               />
-            </div>
-          </div>
 
-          {/* Champ Mot de passe */}
-          <div className="form-group">
-            <label className="form-label">Mot de passe</label>
-            <div className="input-container">
-              <div className="input-icon">
-                <div className="icon-lock"></div>
-              </div>
-              <input
+              <Input
+                label="Password"
                 type="password"
-                placeholder="........"
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="form-input"
+                className="auth-input-full"
               />
+
+              {error && <p className="auth-error-full">{error}</p>}
+              
+              {loading ? (
+                <div className="auth-loader-container">
+                  <Loader />
+                </div>
+              ) : (
+                <>
+                  <Button 
+                    type="submit" 
+                    className="auth-btn-primary"
+                  >
+                    Login to Learnio
+                  </Button>
+                  
+                  <div className="auth-divider">
+                    <span>or continue with</span>
+                  </div>
+                  
+                  <Button 
+                    type="button" 
+                    variant="secondary" 
+                    onClick={handleGoogleSignIn}
+                    className="auth-btn-google"
+                  >
+                    <span className="google-icon">🔍</span>
+                    Sign in with Google
+                  </Button>
+                </>
+              )}
+            </form>
+
+            <div className="auth-links-full">
+              <p className="auth-switch-full">
+                New to Learnio? <Link to="/signup" className="auth-link-highlight">Create an account</Link>
+              </p>
+              <p className="auth-switch-full">
+                <Link to="/forgot-password" className="auth-link">Forgot your password?</Link>
+              </p>
             </div>
-          </div>
-
-          {/* Lien mot de passe oublié - MAINTENANT NAVIGUE VERS LA PAGE */}
-          <div className="forgot-password">
-            <button
-              type="button"
-              onClick={handleForgotPasswordClick} // ← Appelle la navigation
-              className="forgot-link"
-            >
-              Mot de passe oublié ?
-            </button>
-          </div>
-
-          {/* Bouton Se connecter */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="login-button"
-          >
-            {loading ? "Connexion..." : "Se connecter"}
-            {!loading && <span className="cu-badge"></span>}
-          </button>
-        </form>
-
-        {/* Séparateur */}
-        <div className="button-separator">
-          <span className="separator-text">ou</span>
+          </Card>
         </div>
-
-        {/* Bouton Google */}
-        <button
-          onClick={handleGoogleLogin}
-          disabled={googleLoading}
-          className="google-button"
-        >
-          <div className="icon-google"></div>
-          {googleLoading ? "Connexion..." : "Se connecter avec Google"}
-        </button>
-
-        {/* Lien vers inscription */}
-        <p className="signup-link">
-          Pas de compte ?{" "}
-          <a href="/register">
-            S'inscrire
-          </a>
-        </p>
       </div>
     </div>
   );
