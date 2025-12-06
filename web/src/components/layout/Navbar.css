@@ -1,0 +1,299 @@
+/* Import a bulky cinematic font */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;800;900&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* NAVBAR WRAPPER - BIGGER */
+.navbar {
+  height: 90px; /* Increased from 70px */
+  padding: 0 40px; /* Increased padding */
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+  border-bottom: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* LOGO SECTION - BIGGER */
+.navbar-left {
+  display: flex;
+  align-items: center;
+}
+
+.navbar-logo {
+  display: flex;
+  align-items: center;
+  gap: 20px; /* Increased gap */
+  text-decoration: none;
+  transition: transform 0.3s ease;
+}
+
+.navbar-logo:hover {
+  transform: translateY(-2px);
+}
+
+.navbar-logo img {
+  height: 60px; /* Increased from 45px */
+  width: auto;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.3));
+}
+
+.logo-text {
+  font-size: 2.2rem; /* Increased from 1.8rem */
+  font-weight: 900;
+  color: #fbbf24;
+  text-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+  letter-spacing: 1px; /* Added letter spacing for cinematic feel */
+  font-family: 'Orbitron', sans-serif; /* Bulky cinematic font */
+}
+
+/* DESKTOP LINKS - BIGGER AND BOLDER */
+.navbar-links {
+  display: flex;
+  gap: 35px; /* Increased gap */
+  align-items: center;
+}
+
+.nav-link {
+  color: white;
+  font-weight: 700; /* Bolder */
+  text-decoration: none;
+  padding: 12px 20px; /* Increased padding */
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  position: relative;
+  font-size: 1.1rem; /* Larger font */
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.nav-link:hover {
+  color: #fbbf24;
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.nav-link::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 0;
+  height: 3px; /* Thicker underline */
+  background: #fbbf24;
+  transition: all 0.3s ease;
+  transform: translateX(-50%);
+}
+
+.nav-link:hover::after {
+  width: 80%;
+}
+
+/* BUTTONS - BIGGER */
+.btn {
+  padding: 14px 28px; /* Increased padding */
+  font-size: 1rem; /* Larger font */
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 700; /* Bolder */
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  font-family: 'Inter', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.login-btn {
+  color: white;
+  background: transparent;
+  border: 2px solid #fbbf24;
+  font-weight: 600;
+}
+
+.login-btn:hover {
+  background: #fbbf24;
+  color: #1e3a8a;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(251, 191, 36, 0.4);
+}
+
+.signup-btn {
+  background: #fbbf24;
+  color: #1e3a8a;
+  border: 2px solid #fbbf24;
+  font-weight: 600;
+}
+
+.signup-btn:hover {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(251, 191, 36, 0.5);
+}
+
+.profile-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  font-weight: 600;
+}
+
+.profile-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.logout-btn {
+  background: #ef4444;
+  color: white;
+  border: 2px solid #ef4444;
+  font-weight: 600;
+}
+
+.logout-btn:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4);
+}
+
+/* RIGHT SIDE CONTAINER */
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 20px; /* Increased gap */
+}
+
+/* BURGER (MOBILE) - BIGGER */
+.burger {
+  display: none;
+  flex-direction: column;
+  gap: 5px; /* Increased gap */
+  cursor: pointer;
+  padding: 10px; /* Increased padding */
+  border-radius: 8px;
+  transition: background 0.3s ease;
+}
+
+.burger:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.burger span {
+  width: 28px; /* Wider */
+  height: 4px; /* Thicker */
+  background: white;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.burger:hover span {
+  background: #fbbf24;
+}
+
+/* MOBILE MENU - BIGGER */
+.mobile-menu {
+  position: absolute;
+  top: 90px; /* Adjusted for taller navbar */
+  right: 0;
+  width: 280px; /* Wider */
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+  padding: 25px; /* Increased padding */
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 15px; /* Increased gap */
+  backdrop-filter: blur(10px);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+}
+
+.mobile-menu .nav-link,
+.mobile-menu .logout-btn {
+  font-size: 1.1rem; /* Larger font */
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: white;
+  padding: 15px 20px; /* Increased padding */
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mobile-menu .nav-link:hover,
+.mobile-menu .logout-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fbbf24;
+  transform: translateX(8px); /* More pronounced hover effect */
+}
+
+.mobile-menu .logout-btn {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.mobile-menu .logout-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .navbar {
+    padding: 0 25px;
+    height: 80px;
+  }
+  
+  .navbar-logo img {
+    height: 50px;
+  }
+  
+  .logo-text {
+    font-size: 1.8rem;
+  }
+
+  .navbar-links {
+    display: none;
+  }
+
+  .navbar-right .btn {
+    display: none;
+  }
+
+  .burger {
+    display: flex;
+  }
+  
+  .mobile-menu {
+    top: 80px;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar {
+    padding: 0 20px;
+    height: 75px;
+  }
+  
+  .logo-text {
+    font-size: 1.6rem;
+  }
+  
+  .navbar-logo img {
+    height: 45px;
+  }
+  
+  .mobile-menu {
+    width: 250px;
+  }
+}

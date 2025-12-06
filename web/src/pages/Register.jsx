@@ -1,107 +1,177 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useAuth } from "../context/authContext";
+import { useNavigate, Link } from "react-router-dom";
+import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
+import Card from "../components/ui/Card";
+import Loader from "../components/ui/Loader";
+import "./Login.css";
 
-const Register = () => {
-  const { register } = useAuth();
+const Signup = () => {
+  const { register, signInWithGoogle } = useAuth();
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState(null);
+  const [error, setError] = useState("");
 
-  const handleSubmit = async (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    setMessage(null);
+
+    if (password !== confirmPwd) {
+      setError("Passwords do not match.");
+      setLoading(false);
+      return;
+    }
 
     try {
       await register(email, password);
-      setMessage({ type: "success", text: "✅ Inscription réussie !" });
-      setEmail("");
-      setPassword("");
-    } catch (error) {
-      setMessage({ type: "error", text: error.message });
-    } finally {
-      setLoading(false);
+      navigate("/dashboard");
+    } catch (err) {
+      console.error(err);
+      setError("Signup failed. Try again.");
     }
+
+    setLoading(false);
+  };
+
+  const handleGoogleSignUp = async () => {
+    setError("");
+    setLoading(true);
+    
+    try {
+      await signInWithGoogle();
+      navigate("/dashboard");
+    } catch (err) {
+      if (err.code !== 'auth/cancelled-popup-request' && 
+          err.code !== 'auth/popup-closed-by-user') {
+        setError("Google sign-up failed. Please try again.");
+        console.error(err);
+      }
+    }
+    
+    setLoading(false);
   };
 
   return (
-    <div className="register-container">
-      <div className="register-card">
-        <div className="separator"></div>
+    <div className="auth-page">
+      {/* Background Animation */}
+      <div className="auth-background">
+        <div className="bg-shapes">
+          <div className="shape shape-1"></div>
+          <div className="shape shape-2"></div>
+          <div className="shape shape-3"></div>
+        </div>
+      </div>
 
-        {/* Titre principal */}
-        <h1 className="register-title">Bienvenue sur EduConnect</h1>
-        <p className="register-subtitle">
-          Créez votre compte pour accéder à vos cours ou vous connecter à un compte existant.
-        </p>
-
-        {/* Messages */}
-        {message && (
-          <div className={`message ${message.type}`}>
-            {message.text}
+      <div className="auth-container-full">
+        <div className="auth-hero">
+          <h1 className="auth-main-title">
+            Join <span className="brand-highlight">Learnio</span> Today
+          </h1>
+          <p className="auth-hero-subtitle">
+            Start your learning journey with access to thousands of courses, expert instructors, and a community of passionate learners.
+          </p>
+          <div className="auth-features">
+            <div className="auth-feature">
+              <span className="feature-icon">🚀</span>
+              <span>Start Learning Instantly</span>
+            </div>
+            <div className="auth-feature">
+              <span className="feature-icon">💼</span>
+              <span>Boost Your Career</span>
+            </div>
+            <div className="auth-feature">
+              <span className="feature-icon">🌍</span>
+              <span>Join Global Community</span>
+            </div>
           </div>
-        )}
+        </div>
 
-        {/* Formulaire */}
-        <form onSubmit={handleSubmit}>
-          {/* Champ Email */}
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <div className="input-container">
-              <span className="input-icon">
-                <div className="icon icon-email"></div>
-              </span>
-              <input
+        <div className="auth-form-section">
+          <Card className="auth-card-full">
+            <h2 className="auth-form-title">Create Your Account</h2>
+            
+            <form onSubmit={handleSignup} className="auth-form-full">
+              <Input
+                label="Email Address"
                 type="email"
-                placeholder="votre.email@example.com"
+                placeholder="example@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="form-input"
+                className="auth-input-full"
               />
-            </div>
-          </div>
 
-          {/* Champ Mot de passe */}
-          <div className="form-group">
-            <label className="form-label">Mot de passe</label>
-            <div className="input-container">
-              <span className="input-icon">
-                <div className="icon icon-lock"></div>
-              </span>
-              <input
+              <Input
+                label="Password"
                 type="password"
-                placeholder="........"
+                placeholder="Create a strong password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="form-input"
+                className="auth-input-full"
               />
+
+              <Input
+                label="Confirm Password"
+                type="password"
+                placeholder="Confirm your password"
+                value={confirmPwd}
+                onChange={(e) => setConfirmPwd(e.target.value)}
+                required
+                className="auth-input-full"
+              />
+
+              {error && <p className="auth-error-full">{error}</p>}
+              
+              {loading ? (
+                <div className="auth-loader-container">
+                  <Loader />
+                </div>
+              ) : (
+                <>
+                  <Button 
+                    type="submit" 
+                    className="auth-btn-primary"
+                  >
+                    Create Account
+                  </Button>
+                  
+                  <div className="auth-divider">
+                    <span>or sign up with</span>
+                  </div>
+                  
+                  <Button 
+                    type="button" 
+                    variant="secondary" 
+                    onClick={handleGoogleSignUp}
+                    className="auth-btn-google"
+                  >
+                    <span className="google-icon">🔍</span>
+                    Sign up with Google
+                  </Button>
+                </>
+              )}
+            </form>
+
+            <div className="auth-links-full">
+              <p className="auth-switch-full">
+                Already have an account? <Link to="/login" className="auth-link-highlight">Login here</Link>
+              </p>
+              <p className="auth-terms">
+                By creating an account, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
+              </p>
             </div>
-          </div>
-
-          {/* Bouton S'inscrire */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="register-button"
-          >
-            {loading ? "Création du compte..." : "S'inscrire"}
-            {!loading && <span className="register-badge"></span>}
-          </button>
-        </form>
-
-        {/* Lien vers connexion */}
-        <p className="login-link">
-          Déjà un compte ?{" "}
-          <a href="/login">
-            Se connecter
-          </a>
-        </p>
+          </Card>
+        </div>
       </div>
     </div>
   );
 };
 
-export default Register;
+export default Signup;

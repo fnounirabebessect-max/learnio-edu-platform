@@ -1,0 +1,67 @@
+.course-card {
+  width: 320px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
+  transition: 0.3s;
+}
+.course-card:hover {
+  transform: translateY(-4px);
+}
+
+.course-thumb {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+}
+
+.course-content {
+  padding: 16px;
+}
+
+.course-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.course-desc {
+  color: #555;
+  margin-top: 6px;
+  min-height: 50px;
+}
+
+.course-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.badge {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.badge.free {
+  background: #e1f8e8;
+  color: #0a8f3e;
+}
+.badge.paid {
+  background: #fee9e7;
+  color: #d0342c;
+}
+
+.enroll-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #0056ff;
+  color: white;
+  transition: 0.2s;
+}
+.enroll-btn:hover {
+  background: #003fcc;
+}

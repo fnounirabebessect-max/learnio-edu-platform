@@ -1,94 +1,88 @@
-import { useState } from "react";
-import { getAuth, sendPasswordResetEmail } from "firebase/auth";
+import React, { useState } from "react";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "../firebase/firebase";
+import { Link } from "react-router-dom";
+
+import Card from "../components/ui/Card";
+import Input from "../components/ui/Input";
+import Button from "../components/ui/Button";
+import Loader from "../components/ui/Loader";
+
+import "./ForgotPassword.css";
 
 const ForgotPassword = () => {
-  const auth = getAuth();
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleReset = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setMessage(null);
+    setLoading(true);
 
     try {
       await sendPasswordResetEmail(auth, email);
+
       setMessage({
         type: "success",
-        text: "✅ Email de réinitialisation envoyé ! Vérifiez votre boîte mail.",
+        text: "A reset link has been sent to your email ✔",
       });
+
       setEmail("");
     } catch (error) {
-      let msg = "❌ Une erreur est survenue.";
+      console.error(error);
+
+      let msg = "An error occurred. Please try again.";
+
       if (error.code === "auth/user-not-found") {
-        msg = "❌ Aucun compte trouvé avec cet e-mail.";
+        msg = "No account found with this email.";
       } else if (error.code === "auth/invalid-email") {
-        msg = "❌ L'adresse e-mail n'est pas valide.";
+        msg = "Invalid email address.";
       }
-      setMessage({ type: "error", text: msg });
-    } finally {
-      setLoading(false);
+
+      setMessage({
+        type: "error",
+        text: msg,
+      });
     }
+
+    setLoading(false);
   };
 
   return (
-    <div className="forgot-container">
-      <div className="forgot-card">
-        
-        <div className="separator"></div>
-
-        {/* Titre principal */}
-        <h1 className="forgot-title">Réinitialiser le mot de passe</h1>
+    <div className="auth-container">
+      <Card title="Reset your password 🔒">
         <p className="forgot-subtitle">
-          Entrez votre adresse e-mail pour recevoir un lien de réinitialisation
+          Enter your email and we will send you a reset link.
         </p>
 
-        {/* Messages */}
         {message && (
-          <div className={`message ${message.type}`}>
+          <p className={`auth-message ${message.type}`}>
             {message.text}
-          </div>
+          </p>
         )}
 
-        {/* Formulaire */}
-        <form onSubmit={handleSubmit}>
-          {/* Champ Email */}
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <div className="input-container">
-              <div className="input-icon">
-                <div className="icon-email"></div>
-              </div>
-              <input
-                type="email"
-                placeholder="votre.email@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="form-input"
-              />
-            </div>
-          </div>
+        <form onSubmit={handleReset}>
+          <Input
+            label="Email"
+            type="email"
+            placeholder="your@email.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
 
-          {/* Bouton Envoyer */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="forgot-button"
-          >
-            {loading ? "Envoi en cours..." : "Envoyer le lien"}
-            {!loading && <span className="forgot-badge"></span>}
-          </button>
+          {loading ? (
+            <Loader />
+          ) : (
+            <Button type="submit">Send Reset Email</Button>
+          )}
         </form>
 
-        {/* Lien retour */}
-        <p className="back-link">
-          <a href="/login">
-            Retour à la connexion
-          </a>
+        <p className="auth-switch">
+          Remember your password? <Link to="/login">Back to Login</Link>
         </p>
-      </div>
+      </Card>
     </div>
   );
 };
