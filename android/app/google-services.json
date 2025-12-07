@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "633537696725",
+    "project_id": "learnio-edu-platform",
+    "storage_bucket": "learnio-edu-platform.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:633537696725:android:a995d903657de054ef635c",
+        "android_client_info": {
+          "package_name": "com.example.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "633537696725-o1dcocsvdk0385lvqisi6maaqpdi2712.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.mobile",
+            "certificate_hash": "473bad61c15e45f2f46bcf792bb0af38ef469be5"
+          }
+        },
+        {
+          "client_id": "633537696725-e39vp3k3ob6kab22hpt21cud4n65stot.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAhLcWAUVXoTWv8GUGTpp92eTvWwR8Rvyc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "633537696725-e39vp3k3ob6kab22hpt21cud4n65stot.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "633537696725-f8os6p9tvvrgj0v1tagrlbppcjc5o5un.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.mobile"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
