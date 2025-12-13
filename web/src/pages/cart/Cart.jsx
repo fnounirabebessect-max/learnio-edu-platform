@@ -1,8 +1,7 @@
-// src/pages/cart/Cart.jsx
+// src/pages/cart/Cart.jsx - UPDATED
 import React from 'react';
 import { useCart } from '../../context/CartContext';
 import { Link, useNavigate } from 'react-router-dom';
-import { purchaseMultipleCourses } from '../../api/course';
 import { useAuth } from '../../context/authContext';
 import './Cart.css';
 
@@ -13,7 +12,7 @@ export default function Cart() {
   
   const total = getTotal();
   
-  const handleCheckout = async () => {
+  const handleCheckout = () => {
     if (!currentUser) {
       alert('Please log in to complete your purchase.');
       navigate('/login');
@@ -25,30 +24,13 @@ export default function Cart() {
       return;
     }
     
-    // Prepare user data
-    const userData = {
-      email: currentUser.email,
-      displayName: currentUser.displayName || currentUser.email.split('@')[0]
-    };
-    
-    try {
-      // Purchase all courses in cart
-      const paymentResult = await purchaseMultipleCourses(
-        currentUser.uid, 
-        cartItems, 
-        userData
-      );
-      
-      // Clear cart after successful payment initiation
-      clearCart();
-      
-      // Redirect to PayMe
-      window.location.href = paymentResult.paymentUrl;
-      
-    } catch (error) {
-      console.error('Checkout error:', error);
-      alert('Error: ' + error.message);
-    }
+    // Navigate to payment checkout page with cart data
+    navigate('/checkout', {
+      state: {
+        cartItems,
+        totalAmount: total
+      }
+    });
   };
   
   if (cartItems.length === 0) {
@@ -142,8 +124,13 @@ export default function Cart() {
               <button 
                 className="btn-checkout"
                 onClick={handleCheckout}
+                disabled={!currentUser}
               >
-                🛒 Finalize Purchase ({total} DT)
+                {currentUser ? (
+                  `🛒 Proceed to Payment (${total} DT)`
+                ) : (
+                  'Login to Checkout'
+                )}
               </button>
             </div>
           </div>
@@ -152,6 +139,15 @@ export default function Cart() {
             <span className="security-icon">🔒</span>
             <span>Secure checkout • 30-day money-back guarantee</span>
           </div>
+          
+          {!currentUser && (
+            <div className="cart-login-notice">
+              <p>You need to be logged in to complete your purchase.</p>
+              <Link to="/login" className="btn-login">
+                Login Now
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     </div>

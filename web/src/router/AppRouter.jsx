@@ -1,4 +1,4 @@
-// src/router/AppRouter.jsx
+// src/router/AppRouter.jsx - COMPLETE VERSION
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "../context/authContext";
@@ -14,6 +14,7 @@ import Courses from "../pages/course/Courses";
 import CourseDetail from "../pages/course/CourseDetail";
 import Profile from "../pages/user/Profile";
 import Cart from "../pages/cart/Cart";
+import Checkout from "../pages/checkout/Checkout"; // NEW: Added checkout page
 import PaymentSuccess from "../pages/payment/PaymentSuccess";
 import PaymentFailure from "../pages/payment/PaymentFailure";
 import PaymentCancel from "../pages/payment/PaymentCancel";
@@ -70,10 +71,20 @@ function AppRouter() {
           <Route path="/courses" element={<Courses />} />
           <Route path="/courses/:id" element={<CourseDetail />} />
 
-          {/* Cart Page */}
+          {/* Cart Page - Public but cart requires login for checkout */}
           <Route path="/cart" element={<Cart />} />
 
-          {/* Payment Pages */}
+          {/* Checkout Page - Protected */}
+          <Route 
+            path="/checkout" 
+            element={
+              <ProtectedRoute>
+                <Checkout />
+              </ProtectedRoute>
+            } 
+          />
+
+          {/* Payment Pages - These handle payment callbacks */}
           <Route path="/payment/success" element={<PaymentSuccess />} />
           <Route path="/payment/failure" element={<PaymentFailure />} />
           <Route path="/payment/cancel" element={<PaymentCancel />} />
