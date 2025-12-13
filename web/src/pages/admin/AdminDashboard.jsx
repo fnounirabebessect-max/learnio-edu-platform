@@ -199,7 +199,7 @@ const AdminDashboard = () => {
         <div className="stat-card">
           <div className="stat-icon">💰</div>
           <div className="stat-content">
-            <h3>{stats.totalRevenue.toFixed(2)} €</h3>
+            <h3>{stats.totalRevenue.toFixed(2)} dt</h3>
             <p>Total Revenue</p>
             <span className="stat-trend">+15% this month</span>
           </div>
@@ -249,7 +249,7 @@ const AdminDashboard = () => {
                     }}
                   ></div>
                 </div>
-                <div className="chart-bar-value">{item.revenue.toFixed(0)}€</div>
+                <div className="chart-bar-value">{item.revenue.toFixed(0)}dt</div>
               </div>
             ))}
           </div>
@@ -259,11 +259,11 @@ const AdminDashboard = () => {
           <h3>Revenue Summary</h3>
           <div className="summary-item">
             <span>Monthly Revenue:</span>
-            <strong>{stats.monthlyRevenue[stats.monthlyRevenue.length - 1]?.revenue.toFixed(0) || 0} €</strong>
+            <strong>{stats.monthlyRevenue[stats.monthlyRevenue.length - 1]?.revenue.toFixed(0) || 0} dt</strong>
           </div>
           <div className="summary-item">
             <span>Weekly Revenue:</span>
-            <strong>{(stats.totalRevenue / 24).toFixed(0)} €</strong>
+            <strong>{(stats.totalRevenue / 24).toFixed(0)} dt</strong>
           </div>
           <div className="summary-item">
             <span>New Enrollments:</span>
@@ -284,7 +284,7 @@ const AdminDashboard = () => {
               </div>
               <div className="course-stats">
                 <span className="enrollments">{course.enrollments} enrollments</span>
-                <span className="revenue">{course.price.toFixed(2)} € each</span>
+                <span className="revenue">{course.price.toFixed(2)} dt each</span>
               </div>
             </div>
           ))}

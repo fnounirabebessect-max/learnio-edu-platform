@@ -125,3 +125,62 @@
     width: 100%;
   }
 }
+/* Debug styles */
+.debug-details {
+  margin-top: 20px;
+  text-align: left;
+}
+
+.debug-details summary {
+  cursor: pointer;
+  color: #666;
+  font-size: 14px;
+}
+
+.debug-details pre {
+  background: #f5f5f5;
+  padding: 10px;
+  border-radius: 4px;
+  overflow: auto;
+  max-height: 200px;
+  font-size: 12px;
+}
+
+.enrolled-courses {
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  margin: 15px 0;
+  text-align: left;
+}
+
+.enrolled-courses ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 10px 0;
+}
+
+.enrolled-courses li {
+  padding: 5px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.enrolled-courses li:last-child {
+  border-bottom: none;
+}
+
+.btn-tertiary {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  margin: 5px;
+  transition: background-color 0.3s;
+}
+
+.btn-tertiary:hover {
+  background-color: #5a6268;
+}

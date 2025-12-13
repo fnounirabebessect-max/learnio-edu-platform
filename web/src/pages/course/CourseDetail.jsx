@@ -1,4 +1,4 @@
-// src/pages/course/CourseDetail.jsx - COMPLETE WITH REVIEW SYSTEM
+// src/pages/course/CourseDetail.jsx
 import React, { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import "./CourseDetail.css";
@@ -16,14 +16,14 @@ import {
 } from "../../api/course";
 import { useAuth } from "../../context/authContext";
 import { useCart } from "../../context/CartContext";
-import { FaFilePdf, FaCheckCircle, FaClock, FaBook, FaStar, FaUser, FaLanguage, FaChartLine, FaComment, FaSpinner, FaEdit, FaTrash, FaRegStar, FaStarHalfAlt } from "react-icons/fa";
+import { FaFilePdf, FaCheckCircle, FaClock, FaBook, FaStar, FaUser, FaLanguage, FaChartLine, FaComment, FaSpinner, FaEdit, FaTrash, FaRegStar, FaStarHalfAlt, FaShoppingCart } from "react-icons/fa";
 import CertificateGenerator from "../../components/CertificateGenerator";
 
 export default function CourseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const { addToCart, isInCart } = useCart();
+  const { addToCart, isInCart, removeFromCart } = useCart();
 
   const [course, setCourse] = useState(null);
   const [isEnrolled, setIsEnrolled] = useState(false);
@@ -45,6 +45,7 @@ export default function CourseDetail() {
   const [userReview, setUserReview] = useState(null);
   const [editingReviewId, setEditingReviewId] = useState(null);
   const [deletingReview, setDeletingReview] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
 
   useEffect(() => {
     loadCourse();
@@ -58,16 +59,39 @@ export default function CourseDetail() {
       setCourse(data);
 
       if (currentUser) {
-        const status = await getEnrollmentStatus(currentUser.uid, id);
-        setIsEnrolled(status);
-        
-        if (status) {
-          const progressData = await getCourseProgress(currentUser.uid, id);
-          setProgress(progressData);
+        try {
+          const status = await getEnrollmentStatus(currentUser.uid, id);
+          setIsEnrolled(!!status);
           
-          // Load user's review for this course
-          const userRev = await getUserReview(currentUser.uid, id);
-          setUserReview(userRev);
+          if (status) {
+            try {
+              const progressData = await getCourseProgress(currentUser.uid, id);
+              console.log("Loaded progress:", progressData);
+              setProgress({
+                ...progressData,
+                completedModules: progressData.completedModules || [],
+                progress: progressData.progress || 0
+              });
+            } catch (progressError) {
+              console.warn("Error loading progress:", progressError.message);
+              setProgress({
+                userId: currentUser.uid,
+                courseId: id,
+                progress: 0,
+                completedModules: []
+              });
+            }
+            
+            try {
+              const userRev = await getUserReview(currentUser.uid, id);
+              setUserReview(userRev);
+            } catch (reviewError) {
+              console.warn("Error loading user review:", reviewError.message);
+            }
+          }
+        } catch (enrollmentError) {
+          console.warn("Error checking enrollment:", enrollmentError.message);
+          setIsEnrolled(false);
         }
       }
     } catch (error) {
@@ -98,30 +122,70 @@ export default function CourseDetail() {
       return;
     }
 
+    setEnrolling(true);
+    
     try {
       if (course.isFree) {
         // Free course enrollment
         await enrollUserInCourse(currentUser.uid, id);
         setIsEnrolled(true);
         
-        const progressData = await getCourseProgress(currentUser.uid, id);
-        setProgress(progressData);
+        // Load progress
+        try {
+          const progressData = await getCourseProgress(currentUser.uid, id);
+          setProgress(progressData);
+        } catch (progressError) {
+          console.warn("Progress load error:", progressError.message);
+          setProgress({
+            userId: currentUser.uid,
+            courseId: id,
+            progress: 0,
+            completedModules: []
+          });
+        }
         
         alert("Enrolled successfully! You can now access all course materials.");
       } else {
-        // Paid course - redirect to PayMe
-        const userData = {
-          email: currentUser.email,
-          displayName: currentUser.displayName || currentUser.email.split('@')[0]
-        };
+        // Paid course - direct purchase
+        try {
+          const userData = {
+            email: currentUser.email,
+            displayName: currentUser.displayName || currentUser.email.split('@')[0],
+            amount: course.price || 0,
+            totalAmount: course.price || 0
+          };
 
-        const paymentResult = await purchaseCourse(currentUser.uid, id, userData);
-        
-        // Redirect to PayMe payment page
-        window.location.href = paymentResult.paymentUrl;
+          await purchaseCourse(currentUser.uid, id, userData);
+          
+          alert("Payment processed successfully! You are now enrolled.");
+          setIsEnrolled(true);
+          loadCourse(); // Reload course data
+        } catch (paymentError) {
+          console.error("Payment error:", paymentError);
+          
+          // Check if it's an "already enrolled" error
+          if (paymentError.message.includes("Already enrolled")) {
+            setIsEnrolled(true);
+            alert("You are already enrolled in this course!");
+            loadCourse();
+          } else {
+            alert("Payment error: " + paymentError.message);
+          }
+        }
       }
     } catch (error) {
-      alert("Error: " + error.message);
+      console.error("Error in handleEnroll:", error);
+      
+      // Check specific error messages
+      if (error.message.includes("Already enrolled")) {
+        setIsEnrolled(true);
+        alert("You are already enrolled in this course!");
+        loadCourse();
+      } else {
+        alert("Error: " + (error.message || "Failed to enroll. Please try again."));
+      }
+    } finally {
+      setEnrolling(false);
     }
   }
 
@@ -139,22 +203,47 @@ export default function CourseDetail() {
     }
   };
 
+  const handleRemoveFromCart = () => {
+    if (removeFromCart(course.id)) {
+      alert(`"${course.title}" removed from cart!`);
+    }
+  };
+
   const handleMarkComplete = async (moduleId) => {
     if (!currentUser || !isEnrolled) {
       alert("Please enroll in the course first.");
       return;
     }
 
+    if (!moduleId) {
+      console.error("Module ID is undefined!");
+      alert("Cannot mark module complete: Module ID is missing.");
+      return;
+    }
+
+    console.log("Marking module complete:", moduleId);
+    
     try {
       const result = await markModuleComplete(currentUser.uid, id, moduleId);
-      setProgress(prev => ({
-        ...prev,
-        completedModules: result.completedModules,
-        progress: result.progress
-      }));
-      alert("Module marked as complete!");
+      
+      if (result.success) {
+        setProgress(prev => ({
+          ...prev,
+          completedModules: result.completedModules || [],
+          progress: result.progress || 0
+        }));
+        alert("Module marked as complete!");
+        
+        // Check if course is now complete
+        if (result.progress === 100 && course?.modules?.length > 0) {
+          alert("🎉 Congratulations! You have completed this course!");
+        }
+      } else {
+        alert("Could not mark module as complete: " + (result.error || "Unknown error"));
+      }
     } catch (error) {
-      alert("Error: " + error.message);
+      console.error("Error marking module complete:", error);
+      alert("Error: " + (error.message || "Failed to mark module as complete"));
     }
   };
 
@@ -193,11 +282,7 @@ export default function CourseDetail() {
         userName: currentUser.displayName || currentUser.email.split('@')[0]
       };
 
-      const result = await submitCourseReview(
-        currentUser.uid, 
-        id, 
-        reviewData
-      );
+      await submitCourseReview(currentUser.uid, id, reviewData);
 
       // Reload course and reviews
       await loadCourse();
@@ -209,10 +294,10 @@ export default function CourseDetail() {
       setShowEditReviewModal(false);
       setEditingReviewId(null);
       
-      alert(result.isUpdate ? 'Review updated successfully!' : 'Review submitted successfully!');
+      alert('Review submitted successfully!');
     } catch (error) {
       console.error('Error submitting review:', error);
-      alert('Error: ' + error.message);
+      alert('Error: ' + (error.message || 'Failed to submit review'));
     } finally {
       setSubmittingReview(false);
     }
@@ -236,7 +321,7 @@ export default function CourseDetail() {
 
     setDeletingReview(true);
     try {
-      await deleteReview(reviewId, currentUser.uid, id);
+      await deleteReview(reviewId);
       
       // Reload course and reviews
       await loadCourse();
@@ -245,7 +330,7 @@ export default function CourseDetail() {
       alert("Review deleted successfully!");
     } catch (error) {
       console.error('Error deleting review:', error);
-      alert('Error: ' + error.message);
+      alert('Error: ' + (error.message || 'Failed to delete review'));
     } finally {
       setDeletingReview(false);
     }
@@ -266,19 +351,24 @@ export default function CourseDetail() {
   };
 
   const isModuleCompleted = (moduleId) => {
-    return progress?.completedModules?.includes(moduleId) || false;
+    if (!progress || !progress.completedModules || !moduleId) return false;
+    
+    // Convert both to string for comparison
+    const moduleIdStr = String(moduleId);
+    return progress.completedModules.some(id => String(id) === moduleIdStr);
   };
 
   const canGetCertificate = () => {
-    if (!progress || !course) return false;
+    if (!progress || !course || !course.modules) return false;
     
     const allModulesCompleted = 
-      course.modules?.length === progress.completedModules?.length;
+      progress.completedModules?.length === course.modules.length;
     
     return allModulesCompleted;
   };
 
   const formatTime = (minutes) => {
+    if (!minutes) return "0 min";
     if (minutes < 60) return `${minutes} min`;
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
@@ -374,6 +464,12 @@ export default function CourseDetail() {
     );
   }
 
+  // Ensure modules have proper IDs
+  const safeModules = course.modules?.map((module, index) => ({
+    ...module,
+    id: module.id || `module_${index + 1}`
+  })) || [];
+
   // Certificate data
   const certificateData = currentUser ? {
     userName: currentUser.displayName || currentUser.email.split('@')[0],
@@ -381,6 +477,9 @@ export default function CourseDetail() {
     completionDate: new Date().toLocaleDateString('fr-FR'),
     certificateId: `CERT-${Date.now().toString(36).toUpperCase()}`
   } : null;
+
+  // Check if course is in cart
+  const inCart = isInCart(course.id);
 
   return (
     <div className="course-detail-container">
@@ -464,12 +563,12 @@ export default function CourseDetail() {
                 <span className="feature-text">{formatTime(course.duration || 0)} total</span>
               </div>
               
-              {course.modules && (
+              {safeModules.length > 0 && (
                 <div className="feature">
                   <span className="feature-icon">
                     <FaBook />
                   </span>
-                  <span className="feature-text">{course.modules.length} modules</span>
+                  <span className="feature-text">{safeModules.length} modules</span>
                 </div>
               )}
               
@@ -511,31 +610,61 @@ export default function CourseDetail() {
               </div>
             ) : (
               <div className="enrollment-actions">
-                {isInCart(course.id) ? (
+                {course.isFree ? (
+                  // Free course - enroll directly
+                  <button 
+                    className="btn-enroll-large btn-free"
+                    onClick={handleEnroll}
+                    disabled={enrolling}
+                  >
+                    {enrolling ? (
+                      <>
+                        <FaSpinner className="spinner" /> Enrolling...
+                      </>
+                    ) : (
+                      "Enroll For Free"
+                    )}
+                  </button>
+                ) : inCart ? (
+                  // Paid course - already in cart
                   <>
                     <button className="btn-in-cart" disabled>
-                      🛒 Already in Cart
+                      <FaShoppingCart /> In Cart
                     </button>
-                    <Link to="/cart" className="btn-go-to-cart">
-                      Go to Cart →
-                    </Link>
+                    <div className="cart-actions-row">
+                      <button 
+                        className="btn-remove-from-cart"
+                        onClick={handleRemoveFromCart}
+                      >
+                        Remove from Cart
+                      </button>
+                      <Link to="/cart" className="btn-go-to-cart">
+                        Go to Cart →
+                      </Link>
+                    </div>
                   </>
                 ) : (
+                  // Paid course - not in cart
                   <>
                     <button 
-                      className={`btn-enroll-large ${!course.isFree ? 'btn-premium' : 'btn-free'}`}
+                      className="btn-enroll-large btn-premium"
                       onClick={handleAddToCart}
                     >
-                      {course.isFree ? "Enroll For Free" : `Add to Cart - ${course.price} DT`}
+                      <FaShoppingCart /> Add to Cart - {course.price} DT
                     </button>
-                    {!course.isFree && (
-                      <button 
-                        className="btn-buy-now"
-                        onClick={handleEnroll}
-                      >
-                        Buy Now
-                      </button>
-                    )}
+                    <button 
+                      className="btn-buy-now"
+                      onClick={handleEnroll}
+                      disabled={enrolling}
+                    >
+                      {enrolling ? (
+                        <>
+                          <FaSpinner className="spinner" /> Processing...
+                        </>
+                      ) : (
+                        "Buy Now"
+                      )}
+                    </button>
                   </>
                 )}
                 <div className="guarantee">
@@ -560,11 +689,11 @@ export default function CourseDetail() {
       <div className="course-content-section">
         <h2 className="section-title">Course Content</h2>
         
-        {course.modules && course.modules.length > 0 ? (
+        {safeModules.length > 0 ? (
           <div className="modules-list">
-            {course.modules.map((module, index) => (
+            {safeModules.map((module, index) => (
               <div 
-                key={module.id} 
+                key={module.id || `module_${index}`} 
                 className={`module-item ${isModuleCompleted(module.id) ? 'completed' : ''} ${activeModule === module.id ? 'active' : ''}`}
                 onClick={() => setActiveModule(activeModule === module.id ? null : module.id)}
               >
@@ -605,7 +734,10 @@ export default function CourseDetail() {
                         </div>
                         {isEnrolled && !isModuleCompleted(module.id) && (
                           <button 
-                            onClick={() => handleMarkComplete(module.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkComplete(module.id);
+                            }}
                             className="btn-mark-complete"
                           >
                             <FaCheckCircle /> Mark as Complete
@@ -632,11 +764,35 @@ export default function CourseDetail() {
                         >
                           <FaFilePdf /> Download PDF
                         </a>
+                        {isEnrolled && !isModuleCompleted(module.id) && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkComplete(module.id);
+                            }}
+                            className="btn-mark-complete-pdf"
+                          >
+                            <FaCheckCircle /> Mark as Complete
+                          </button>
+                        )}
                       </div>
                     )}
                     
                     {!module.videoUrl && !module.pdfUrl && (
-                      <p className="no-content">Content coming soon...</p>
+                      <div className="no-content-container">
+                        <p className="no-content">Content coming soon...</p>
+                        {isEnrolled && !isModuleCompleted(module.id) && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkComplete(module.id);
+                            }}
+                            className="btn-mark-complete"
+                          >
+                            <FaCheckCircle /> Mark as Complete
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -653,12 +809,12 @@ export default function CourseDetail() {
         <div className="certificate-status">
           <h2 className="section-title">Certificate Status</h2>
           <div className="requirements-list">
-            <div className={`requirement ${progress.completedModules?.length === course.modules?.length ? 'met' : ''}`}>
+            <div className={`requirement ${progress.completedModules?.length === safeModules.length ? 'met' : ''}`}>
               <span className="requirement-icon">
-                {progress.completedModules?.length === course.modules?.length ? '✓' : '○'}
+                {progress.completedModules?.length === safeModules.length ? '✓' : '○'}
               </span>
               <span className="requirement-text">
-                Complete all modules ({progress.completedModules?.length || 0}/{course.modules?.length || 0})
+                Complete all modules ({progress.completedModules?.length || 0}/{safeModules.length || 0})
               </span>
             </div>
           </div>

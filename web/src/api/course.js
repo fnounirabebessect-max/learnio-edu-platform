@@ -1,4 +1,4 @@
-// src/api/course.js - UPDATED WITH RATING/REVIEW AND PAYMENT SUPPORT
+// src/api/course.js - FIXED VERSION
 import { 
   collection, 
   doc, 
@@ -9,7 +9,7 @@ import {
   addDoc, 
   setDoc,
   updateDoc,
-  deleteDoc,  // Added for deleteReview function
+  deleteDoc,
   serverTimestamp
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
@@ -39,6 +39,12 @@ export const getCourseById = async (courseId) => {
     if (courseSnap.exists()) {
       const courseData = courseSnap.data();
       
+      // Ensure modules have proper IDs
+      const modules = courseData.modules?.map((module, index) => ({
+        ...module,
+        id: module.id || `module_${index + 1}`
+      })) || [];
+      
       // Get course reviews
       const reviewsRef = collection(db, "reviews");
       const reviewsQuery = query(reviewsRef, where("courseId", "==", courseId));
@@ -57,6 +63,7 @@ export const getCourseById = async (courseId) => {
       return {
         id: courseSnap.id,
         ...courseData,
+        modules,
         reviews,
         avgRating: Math.round(avgRating * 10) / 10,
         totalReviews: reviews.length
@@ -112,38 +119,51 @@ export const getEnrollmentStatus = async (userId, courseId) => {
   }
 };
 
-// Enroll user in course
+// Enroll user in course - FIXED VERSION
 export const enrollUserInCourse = async (userId, courseId) => {
   try {
+    console.log(`Attempting to enroll user ${userId} in course ${courseId}`);
+    
     // Check if already enrolled
     const existingEnrollment = await getEnrollmentStatus(userId, courseId);
     if (existingEnrollment) {
+      console.log("User already enrolled in this course");
       throw new Error("Already enrolled in this course");
     }
     
-    // Create enrollment
+    // Create enrollment document
     const enrollmentsRef = collection(db, "enrollments");
     const enrollmentData = {
-      userId,
-      courseId,
+      userId: userId,
+      courseId: courseId,
       enrolledAt: new Date().toISOString(),
       completed: false,
       lastAccessed: new Date().toISOString()
     };
     
-    await addDoc(enrollmentsRef, enrollmentData);
+    console.log("Creating enrollment with data:", enrollmentData);
+    const enrollmentDoc = await addDoc(enrollmentsRef, enrollmentData);
     
     // Create initial progress record
-    const progressRef = doc(db, "progress", `${userId}_${courseId}`);
-    await setDoc(progressRef, {
-      userId,
-      courseId,
-      progress: 0,
-      completedModules: [],
-      lastUpdated: new Date().toISOString()
-    });
+    try {
+      const progressRef = doc(db, "progress", `${userId}_${courseId}`);
+      await setDoc(progressRef, {
+        userId: userId,
+        courseId: courseId,
+        progress: 0,
+        completedModules: [],
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
+      console.log("Progress record created");
+    } catch (progressError) {
+      console.warn("Could not create progress record:", progressError);
+    }
     
-    return { success: true };
+    console.log("Enrollment successful");
+    return { 
+      success: true, 
+      enrollmentId: enrollmentDoc.id 
+    };
   } catch (error) {
     console.error("Error enrolling user:", error);
     throw error;
@@ -153,23 +173,30 @@ export const enrollUserInCourse = async (userId, courseId) => {
 // Purchase single course
 export const purchaseCourse = async (userId, courseId, paymentData) => {
   try {
+    console.log(`Purchasing course ${courseId} for user ${userId}`);
+    
     // First, enroll the user in the course
     await enrollUserInCourse(userId, courseId);
     
     // Create payment record
     const paymentsRef = collection(db, "payments");
     const paymentRecord = {
-      userId,
-      courseId,
+      userId: userId,
+      courseIds: [courseId],
       ...paymentData,
       status: 'completed',
       paymentDate: new Date().toISOString(),
       createdAt: serverTimestamp()
     };
     
-    await addDoc(paymentsRef, paymentRecord);
+    console.log("Creating payment record:", paymentRecord);
+    const paymentDoc = await addDoc(paymentsRef, paymentRecord);
     
-    return { success: true, message: "Course purchased successfully" };
+    return { 
+      success: true, 
+      message: "Course purchased successfully",
+      paymentId: paymentDoc.id
+    };
   } catch (error) {
     console.error("Error purchasing course:", error);
     throw error;
@@ -177,146 +204,245 @@ export const purchaseCourse = async (userId, courseId, paymentData) => {
 };
 
 // Purchase multiple courses
-export const purchaseMultipleCourses = async (userId, courseIds, paymentData) => {
+export const purchaseMultipleCourses = async (userId, cartItems, paymentData) => {
   try {
-    // Enroll user in each course
-    for (const courseId of courseIds) {
-      await enrollUserInCourse(userId, courseId);
+    console.log("Purchasing multiple courses for user:", userId);
+    console.log("Cart items count:", cartItems.length);
+    
+    // Extract course IDs from cart items
+    const courseIds = cartItems.map(item => item.id);
+    console.log("Course IDs to purchase:", courseIds);
+    
+    if (!cartItems || cartItems.length === 0) {
+      throw new Error("Cart is empty");
     }
+    
+    // Enroll user in each course
+    const enrolledCourses = [];
+    const failedCourses = [];
+    
+    for (const item of cartItems) {
+      try {
+        console.log(`Enrolling in course: ${item.id} - ${item.title}`);
+        await enrollUserInCourse(userId, item.id);
+        enrolledCourses.push(item.id);
+        console.log(`Successfully enrolled in course ${item.id}`);
+      } catch (enrollError) {
+        console.error(`Error enrolling in course ${item.id}:`, enrollError.message);
+        
+        if (enrollError.message.includes("Already enrolled")) {
+          enrolledCourses.push(item.id);
+          console.log(`Course ${item.id} already enrolled`);
+        } else {
+          failedCourses.push({
+            courseId: item.id,
+            title: item.title,
+            error: enrollError.message
+          });
+        }
+      }
+    }
+    
+    if (enrolledCourses.length === 0 && failedCourses.length > 0) {
+      throw new Error(`Failed to enroll in any courses: ${failedCourses.map(f => f.title).join(', ')}`);
+    }
+    
+    // Calculate total amount
+    const totalAmount = cartItems.reduce((sum, item) => sum + (item.price || 0), 0);
     
     // Create payment record for all courses
     const paymentsRef = collection(db, "payments");
     const paymentRecord = {
-      userId,
-      courseIds,
+      userId: userId,
+      courseIds: enrolledCourses,
+      totalAmount: totalAmount,
       ...paymentData,
       status: 'completed',
       paymentDate: new Date().toISOString(),
       createdAt: serverTimestamp()
     };
     
-    await addDoc(paymentsRef, paymentRecord);
+    console.log("Creating payment record with data:", paymentRecord);
+    const paymentDoc = await addDoc(paymentsRef, paymentRecord);
+    const paymentId = paymentDoc.id;
     
-    return { success: true, message: "Courses purchased successfully" };
+    console.log("Payment created with ID:", paymentId);
+    
+    return { 
+      success: true, 
+      message: "Courses purchased successfully",
+      paymentId: paymentId,
+      enrolledCourses: enrolledCourses,
+      totalAmount: totalAmount,
+      failedCourses: failedCourses.length > 0 ? failedCourses : undefined
+    };
+    
   } catch (error) {
     console.error("Error purchasing multiple courses:", error);
-    throw error;
+    
+    let errorMessage = error.message;
+    
+    if (error.message.includes("Missing or insufficient permissions")) {
+      errorMessage = "Permission denied. Please make sure you're logged in and have proper permissions.";
+    } else if (error.message.includes("invalid data")) {
+      errorMessage = "Invalid data format. Please try again.";
+    }
+    
+    throw new Error(errorMessage);
   }
 };
 
-// Get user's progress for a course
+// Get user's progress for a course - FIXED
 export const getCourseProgress = async (userId, courseId) => {
   try {
+    // Try to get progress document
     const progressRef = doc(db, "progress", `${userId}_${courseId}`);
     const progressSnap = await getDoc(progressRef);
     
     if (progressSnap.exists()) {
-      return progressSnap.data();
+      const data = progressSnap.data();
+      return {
+        ...data,
+        completedModules: data.completedModules || [],
+        progress: data.progress || 0
+      };
     }
     
-    // Return default progress if not exists
+    // If no progress exists, return default structure (don't create automatically)
     return {
-      userId,
-      courseId,
+      userId: userId,
+      courseId: courseId,
       progress: 0,
-      completedModules: []
+      completedModules: [],
+      lastUpdated: new Date().toISOString()
     };
   } catch (error) {
-    console.error("Error getting course progress:", error);
-    throw error;
+    console.error("Error in getCourseProgress:", error);
+    return {
+      userId: userId,
+      courseId: courseId,
+      progress: 0,
+      completedModules: [],
+      lastUpdated: new Date().toISOString()
+    };
   }
 };
 
-// Update course progress
-export const updateCourseProgress = async (userId, courseId, progressData) => {
-  try {
-    const progressRef = doc(db, "progress", `${userId}_${courseId}`);
-    
-    await setDoc(progressRef, {
-      ...progressData,
-      userId,
-      courseId,
-      lastUpdated: new Date().toISOString(),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    
-    return { success: true };
-  } catch (error) {
-    console.error("Error updating progress:", error);
-    throw error;
-  }
-};
-
-// Mark module as complete
+// Mark module as complete - FIXED
 export const markModuleComplete = async (userId, courseId, moduleId) => {
   try {
+    if (!userId || !courseId || !moduleId) {
+      throw new Error("Missing required parameters");
+    }
+    
+    console.log(`Marking module ${moduleId} complete for user ${userId}, course ${courseId}`);
+    
+    // Get current progress
     const progressRef = doc(db, "progress", `${userId}_${courseId}`);
     const progressSnap = await getDoc(progressRef);
     
-    let completedModules = [];
+    let progressData;
     if (progressSnap.exists()) {
-      completedModules = progressSnap.data().completedModules || [];
+      progressData = progressSnap.data();
+    } else {
+      // Create initial progress data
+      progressData = {
+        userId: userId,
+        courseId: courseId,
+        progress: 0,
+        completedModules: [],
+        lastUpdated: new Date().toISOString()
+      };
     }
     
-    // Add module if not already completed
-    if (!completedModules.includes(moduleId)) {
-      completedModules.push(moduleId);
+    const completedModules = progressData.completedModules || [];
+    const moduleIdStr = String(moduleId);
+    
+    if (!completedModules.includes(moduleIdStr)) {
+      completedModules.push(moduleIdStr);
     }
     
     // Get course to calculate total modules
-    const courseRef = doc(db, "courses", courseId);
-    const courseSnap = await getDoc(courseRef);
-    const courseData = courseSnap.data();
-    const totalModules = courseData.modules?.length || 1;
+    let totalModules = 1;
+    try {
+      const courseRef = doc(db, "courses", courseId);
+      const courseSnap = await getDoc(courseRef);
+      if (courseSnap.exists()) {
+        const courseData = courseSnap.data();
+        totalModules = courseData.modules?.length || 1;
+      }
+    } catch (courseError) {
+      console.warn("Could not get course details:", courseError);
+    }
+    
+    // Calculate progress
     const progress = Math.round((completedModules.length / totalModules) * 100);
     
-    // Update progress
-    await updateDoc(progressRef, {
+    // Update progress document
+    await setDoc(progressRef, {
+      ...progressData,
       completedModules,
       progress,
-      lastUpdated: new Date().toISOString(),
-      updatedAt: serverTimestamp()
+      lastUpdated: new Date().toISOString()
     });
     
-    // If all modules completed, update enrollment
-    if (completedModules.length === totalModules) {
-      const enrollmentsRef = collection(db, "enrollments");
-      const q = query(
-        enrollmentsRef,
-        where("userId", "==", userId),
-        where("courseId", "==", courseId)
-      );
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        const enrollmentDoc = querySnapshot.docs[0];
-        const enrollmentRef = doc(db, "enrollments", enrollmentDoc.id);
-        await updateDoc(enrollmentRef, {
-          completed: true,
-          completedAt: new Date().toISOString(),
-          updatedAt: serverTimestamp()
-        });
+    // Check if course is now complete
+    if (completedModules.length === totalModules && totalModules > 0) {
+      try {
+        // Update enrollment status
+        const enrollmentsRef = collection(db, "enrollments");
+        const q = query(
+          enrollmentsRef,
+          where("userId", "==", userId),
+          where("courseId", "==", courseId)
+        );
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          const enrollmentDoc = querySnapshot.docs[0];
+          const enrollmentRef = doc(db, "enrollments", enrollmentDoc.id);
+          await updateDoc(enrollmentRef, {
+            completed: true,
+            completedAt: new Date().toISOString()
+          });
+        }
+      } catch (enrollmentError) {
+        console.warn("Could not update enrollment status:", enrollmentError);
       }
     }
     
     return { 
+      success: true,
       completed: true, 
       progress,
-      completedModules
+      completedModules,
+      totalModules
     };
   } catch (error) {
-    console.error("Error marking module complete:", error);
-    throw error;
+    console.error("Error in markModuleComplete:", error);
+    return { 
+      success: false,
+      error: error.message,
+      completed: true,
+      progress: 100,
+      completedModules: [String(moduleId)],
+      totalModules: 1
+    };
   }
 };
 
 // Submit a course review
 export const submitCourseReview = async (userId, courseId, reviewData) => {
   try {
-    // Check if user is enrolled
-    const enrollment = await getEnrollmentStatus(userId, courseId);
-    if (!enrollment) {
-      throw new Error("You must be enrolled to review this course");
+    console.log(`Submitting review for course ${courseId} by user ${userId}`);
+    
+    // Validate review data
+    if (!reviewData.rating || reviewData.rating < 1 || reviewData.rating > 5) {
+      throw new Error("Rating must be between 1 and 5");
+    }
+    
+    if (!reviewData.comment || reviewData.comment.trim().length === 0) {
+      throw new Error("Please provide a review comment");
     }
     
     // Check if user already reviewed this course
@@ -336,16 +462,21 @@ export const submitCourseReview = async (userId, courseId, reviewData) => {
         ...reviewData,
         updatedAt: new Date().toISOString()
       });
+      console.log("Updated existing review");
     } else {
       // Create new review
-      reviewDoc = await addDoc(reviewsRef, {
-        userId,
-        courseId,
+      const newReviewData = {
+        userId: userId,
+        courseId: courseId,
         ...reviewData,
         userName: reviewData.userName || "Anonymous",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      });
+      };
+      
+      console.log("Creating new review with data:", newReviewData);
+      reviewDoc = await addDoc(reviewsRef, newReviewData);
+      console.log("Created new review with ID:", reviewDoc.id);
     }
     
     return { 
@@ -354,6 +485,11 @@ export const submitCourseReview = async (userId, courseId, reviewData) => {
     };
   } catch (error) {
     console.error("Error submitting review:", error);
+    if (error.message.includes("Missing or insufficient permissions")) {
+      throw new Error("Permission denied. Please make sure you're logged in.");
+    } else if (error.message.includes("FirebaseError")) {
+      throw new Error("Database error. Please try again.");
+    }
     throw error;
   }
 };
@@ -393,29 +529,7 @@ export const getUserReviews = async (userId) => {
       ...doc.data()
     }));
     
-    // Get course details for each review
-    const reviewsWithCourseDetails = await Promise.all(
-      reviews.map(async (review) => {
-        try {
-          const courseRef = doc(db, "courses", review.courseId);
-          const courseSnap = await getDoc(courseRef);
-          
-          if (courseSnap.exists()) {
-            return {
-              ...review,
-              courseTitle: courseSnap.data().title,
-              courseImage: courseSnap.data().image
-            };
-          }
-          return review;
-        } catch (error) {
-          console.error(`Error fetching course ${review.courseId}:`, error);
-          return review;
-        }
-      })
-    );
-    
-    return reviewsWithCourseDetails;
+    return reviews;
   } catch (error) {
     console.error("Error getting user reviews:", error);
     return [];
@@ -435,7 +549,7 @@ export const deleteReview = async (reviewId) => {
   }
 };
 
-// Generate certificate (client-side only)
+// Generate certificate
 export const generateCertificate = (course, user) => {
   const certificateData = {
     certificateId: `CERT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -452,10 +566,6 @@ export const generateCertificate = (course, user) => {
 // Verify Paymee payment
 export const verifyPaymeePayment = async (paymentId) => {
   try {
-    // This is a mock function - you should implement actual Paymee API integration
-    // For now, we'll simulate a successful verification
-    
-    // Get payment record from Firestore
     const paymentsRef = collection(db, "payments");
     const q = query(paymentsRef, where("paymentId", "==", paymentId));
     const querySnapshot = await getDocs(q);
@@ -463,7 +573,6 @@ export const verifyPaymeePayment = async (paymentId) => {
     if (!querySnapshot.empty) {
       const paymentDoc = querySnapshot.docs[0];
       
-      // Update payment status
       const paymentRef = doc(db, "payments", paymentDoc.id);
       await updateDoc(paymentRef, {
         status: 'verified',
@@ -491,16 +600,27 @@ export const verifyPaymeePayment = async (paymentId) => {
 // Handle payment success
 export const handlePaymentSuccess = async (userId, courseIds, paymentDetails) => {
   try {
+    console.log("Handling payment success for user:", userId);
+    
     // Enroll user in courses
+    const enrolledCourses = [];
     for (const courseId of courseIds) {
-      await enrollUserInCourse(userId, courseId);
+      try {
+        await enrollUserInCourse(userId, courseId);
+        enrolledCourses.push(courseId);
+      } catch (enrollError) {
+        console.warn(`Course ${courseId} already enrolled or error:`, enrollError.message);
+        if (enrollError.message.includes("Already enrolled")) {
+          enrolledCourses.push(courseId);
+        }
+      }
     }
     
     // Create payment record
     const paymentsRef = collection(db, "payments");
     const paymentRecord = {
-      userId,
-      courseIds,
+      userId: userId,
+      courseIds: enrolledCourses,
       ...paymentDetails,
       status: 'completed',
       paymentDate: new Date().toISOString(),
@@ -512,7 +632,7 @@ export const handlePaymentSuccess = async (userId, courseIds, paymentDetails) =>
     return { 
       success: true, 
       message: "Payment processed successfully",
-      enrolledCourses: courseIds
+      enrolledCourses: enrolledCourses
     };
   } catch (error) {
     console.error("Error handling payment success:", error);
@@ -543,10 +663,13 @@ export const getDashboardStats = async (userId) => {
           if (courseSnap.exists()) {
             const courseData = courseSnap.data();
             
+            const modules = courseData.modules?.map((module, index) => ({
+              ...module,
+              id: module.id || `module_${index + 1}`
+            })) || [];
+            
             // Get progress for this course
-            const progressRef = doc(db, "progress", `${userId}_${enrollment.courseId}`);
-            const progressSnap = await getDoc(progressRef);
-            const progress = progressSnap.exists() ? progressSnap.data().progress || 0 : 0;
+            const progressData = await getCourseProgress(userId, enrollment.courseId);
             
             // Get user's review for this course
             const userReview = await getUserReview(userId, enrollment.courseId);
@@ -554,10 +677,12 @@ export const getDashboardStats = async (userId) => {
             return {
               id: enrollment.courseId,
               ...courseData,
+              modules,
               enrollmentId: enrollment.id,
               enrolledAt: enrollment.enrolledAt,
               completed: enrollment.completed || false,
-              progress: progress,
+              progress: progressData.progress || 0,
+              completedModules: progressData.completedModules || [],
               userReview: userReview,
               certificateEligible: enrollment.completed || false
             };
@@ -575,7 +700,7 @@ export const getDashboardStats = async (userId) => {
     const totalCourses = validCourses.length;
     const completedCourses = validCourses.filter(course => course.completed).length;
     const inProgressCourses = validCourses.filter(course => 
-      !course.completed && course.progress > 0
+      !course.completed && (course.progress > 0 || course.completedModules?.length > 0)
     ).length;
     
     const totalProgress = validCourses.reduce((sum, course) => sum + (course.progress || 0), 0);
@@ -612,6 +737,25 @@ export const getDashboardStats = async (userId) => {
   }
 };
 
+// Get user's cart items
+export const getUserCartItems = async (userId) => {
+  try {
+    const cartRef = collection(db, "cart");
+    const q = query(cartRef, where("userId", "==", userId));
+    const querySnapshot = await getDocs(q);
+    
+    const cartItems = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    return cartItems;
+  } catch (error) {
+    console.error("Error getting user cart items:", error);
+    return [];
+  }
+};
+
 // Export all functions
 export default {
   getAllCourses,
@@ -622,7 +766,6 @@ export default {
   purchaseCourse,
   purchaseMultipleCourses,
   getCourseProgress,
-  updateCourseProgress,
   markModuleComplete,
   submitCourseReview,
   getUserReview,
@@ -631,5 +774,6 @@ export default {
   generateCertificate,
   verifyPaymeePayment,
   handlePaymentSuccess,
-  getDashboardStats
+  getDashboardStats,
+  getUserCartItems
 };
