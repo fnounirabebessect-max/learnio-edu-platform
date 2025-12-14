@@ -1,31 +1,37 @@
-// src/router/AppRouter.jsx - COMPLETE VERSION
+// src/router/AppRouter.jsx - CLEAN VERSION
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "../context/authContext";
+
+// Auth pages
 import Login from "../pages/Login";
 import Register from "../pages/Register";
-import Dashboard from "../pages/Dashboard";
 import ForgotPassword from "../pages/ForgotPassword";
-import ProtectedRoute from "../components/protectedRoute";
 
-// Other imports...
+// Main pages
 import Home from "../pages/Home";
+import Dashboard from "../pages/Dashboard";
 import Courses from "../pages/course/Courses";
 import CourseDetail from "../pages/course/CourseDetail";
 import Profile from "../pages/user/Profile";
 import Cart from "../pages/cart/Cart";
-import Checkout from "../pages/checkout/Checkout"; // NEW: Added checkout page
+import Checkout from "../pages/checkout/Checkout";
+
+// Payment pages
 import PaymentSuccess from "../pages/payment/PaymentSuccess";
 import PaymentFailure from "../pages/payment/PaymentFailure";
 import PaymentCancel from "../pages/payment/PaymentCancel";
-import Navbar from "../components/layout/Navbar";
-import Footer from "../components/layout/Footer";
 
-// Admin imports
+// Admin pages
 import AdminLayout from "../components/layout/AdminLayout";
 import AdminDashboard from "../pages/admin/AdminDashboard";
 import AdminCourses from "../pages/admin/AdminCourses";
 import AdminUsers from "../pages/admin/AdminUsers";
+
+// Components
+import ProtectedRoute from "../components/protectedRoute";
+import Navbar from "../components/layout/Navbar";
+import Footer from "../components/layout/Footer";
 
 function AppRouter() {
   const { currentUser, loading } = useAuth();
@@ -41,7 +47,7 @@ function AppRouter() {
 
   return (
     <BrowserRouter>
-      {/* Conditionally render Navbar - NOT for admin routes */}
+      {/* Navbar for non-admin routes */}
       <Routes>
         <Route path="/admin/*" element={null} />
         <Route path="*" element={<Navbar />} />
@@ -49,32 +55,28 @@ function AppRouter() {
       
       <main className="main-content">
         <Routes>
+          {/* Public routes */}
           <Route path="/" element={<Home />} />
+          <Route path="/courses" element={<Courses />} />
+          <Route path="/courses/:id" element={<CourseDetail />} />
+          <Route path="/cart" element={<Cart />} />
           
-          <Route 
-            path="/signup" 
-            element={currentUser ? <Navigate to="/dashboard" replace /> : <Register />} 
-          />
+          {/* Auth routes */}
           <Route 
             path="/login" 
-            element={currentUser ? <Navigate to="/dashboard" replace /> : <Login />} 
+            element={currentUser ? <Navigate to="/dashboard" /> : <Login />} 
           />
-          
+          <Route 
+            path="/signup" 
+            element={currentUser ? <Navigate to="/dashboard" /> : <Register />} 
+          />
           <Route 
             path="/register" 
             element={<Navigate to="/signup" replace />} 
           />
-          
           <Route path="/forgot-password" element={<ForgotPassword />} />
 
-          {/* Public Courses pages */}
-          <Route path="/courses" element={<Courses />} />
-          <Route path="/courses/:id" element={<CourseDetail />} />
-
-          {/* Cart Page - Public but cart requires login for checkout */}
-          <Route path="/cart" element={<Cart />} />
-
-          {/* Checkout Page - Protected */}
+          {/* Protected: Checkout */}
           <Route 
             path="/checkout" 
             element={
@@ -84,12 +86,12 @@ function AppRouter() {
             } 
           />
 
-          {/* Payment Pages - These handle payment callbacks */}
+          {/* Payment callback routes - No auth required for callbacks */}
           <Route path="/payment/success" element={<PaymentSuccess />} />
           <Route path="/payment/failure" element={<PaymentFailure />} />
           <Route path="/payment/cancel" element={<PaymentCancel />} />
 
-          {/* Protected routes for regular users */}
+          {/* Protected: User routes */}
           <Route
             path="/dashboard"
             element={
@@ -98,7 +100,6 @@ function AppRouter() {
               </ProtectedRoute>
             }
           />
-
           <Route
             path="/profile"
             element={
@@ -108,7 +109,7 @@ function AppRouter() {
             }
           />
 
-          {/* ADMIN ROUTES - Completely separate layout */}
+          {/* Protected: Admin routes */}
           <Route
             path="/admin/*"
             element={
@@ -123,12 +124,12 @@ function AppRouter() {
             <Route path="users" element={<AdminUsers />} />
           </Route>
 
-          {/* Catch all route */}
+          {/* Catch all */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
       
-      {/* Conditionally render Footer - NOT for admin routes */}
+      {/* Footer for non-admin routes */}
       <Routes>
         <Route path="/admin/*" element={null} />
         <Route path="*" element={<Footer />} />

@@ -1,326 +1,284 @@
-// src/api/payment.js - COMPLETE WORKING VERSION
+// src/api/payment.js - CLEAN WORKING VERSION
 import axios from 'axios';
-import { 
-  doc, 
-  setDoc, 
-  serverTimestamp, 
-  getDoc, 
-  collection, 
-  addDoc,
-  query,
-  where,
-  orderBy,
-  getDocs
-} from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
-import PAYMEE_CONFIG from '../config/paymee';
+import { sendPaymentEmail } from './email';
 
-// Generate unique order ID
-const generateOrderId = () => {
-  return `ORDER_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+// Paymee Configuration
+const PAYMEE_CONFIG = {
+  VENDOR_ID: process.env.REACT_APP_PAYMEE_VENDOR_ID,
+  API_KEY: process.env.REACT_APP_PAYMEE_API_KEY || process.env.REACT_APP_PAYMEE_API_TOKEN,
+  BASE_URL: 'https://paymee.tn/api/v1',
+  SUCCESS_URL: `${window.location.origin}/payment/success`,
+  CANCEL_URL: `${window.location.origin}/payment/cancel`,
+  FAILURE_URL: `${window.location.origin}/payment/failure`
 };
 
 // Validate configuration
 export const validatePaymeeConfig = () => {
   const errors = [];
-  
-  if (!PAYMEE_CONFIG.API_TOKEN || PAYMEE_CONFIG.API_TOKEN === '') {
-    errors.push('API_TOKEN is missing');
-  }
-  if (!PAYMEE_CONFIG.VENDOR_ID || PAYMEE_CONFIG.VENDOR_ID === '') {
-    errors.push('VENDOR_ID is missing');
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
+  if (!PAYMEE_CONFIG.VENDOR_ID) errors.push('PAYMEE_VENDOR_ID missing');
+  if (!PAYMEE_CONFIG.API_KEY) errors.push('PAYMEE_API_KEY missing');
+  return { isValid: errors.length === 0, errors };
 };
 
-// Initialize PayMe payment
+// Generate unique order ID
+const generateOrderId = () => {
+  return `ORDER_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`.toUpperCase();
+};
+
+/**
+ * STEP 1: Initialize Payment
+ * Creates transaction in Firestore and redirects to Paymee
+ */
+// src/api/payment.js - ONLY REPLACE THE initPaymeePayment FUNCTION
+
 export const initPaymeePayment = async (paymentData) => {
   try {
-    // Validate configuration
-    const configValidation = validatePaymeeConfig();
-    if (!configValidation.isValid) {
-      throw new Error(`PayMe setup error: ${configValidation.errors.join(', ')}`);
+    const { userId, cartItems, amount, userEmail, userName } = paymentData;
+
+    // Validation
+    if (!userId || !cartItems?.length || amount <= 0) {
+      throw new Error('Invalid payment data');
     }
 
-    const { userId, cartItems, amount, userEmail, userName } = paymentData;
-    
+    // Generate order ID
     const orderId = generateOrderId();
     
-    // Prepare user data
-    const cleanUserName = userName || 'User';
-    const cleanUserEmail = userEmail || 'user@example.com';
-    const firstName = cleanUserName.split(' ')[0] || 'Client';
-    const lastName = cleanUserName.split(' ')[1] || 'Learnio';
-    const courseNames = cartItems?.slice(0, 2).map(item => item.title).join(', ') || 'Course';
-    const courseIds = cartItems?.map(item => item.id) || [];
-    
-    // Prepare payment payload
-    const paymentPayload = {
-      vendor: PAYMEE_CONFIG.VENDOR_ID,
-      amount: parseFloat(amount).toFixed(2),
-      note: `Learnio: ${courseNames}${cartItems?.length > 2 ? '...' : ''}`,
-      first_name: firstName,
-      last_name: lastName,
-      email: cleanUserEmail,
-      phone_number: '20000000',
-      return_url: `${PAYMEE_CONFIG.SUCCESS_URL}?order_id=${orderId}&user_id=${userId}`,
-      cancel_url: `${PAYMEE_CONFIG.CANCEL_URL}?order_id=${orderId}`,
-      order_id: orderId
-    };
+    // Prepare course data
+    const courseIds = cartItems.map(item => item.id);
+    const courseNames = cartItems.map(item => item.title || 'Course').join(', ');
 
-    console.log('🚀 Creating payment...');
+    console.log('💳 Creating payment transaction:', { orderId, userId, amount });
 
-    // 1. Save to Firestore
-    const paymentsRef = collection(db, 'payments');
-    const paymentRecord = {
-      userId: userId,
-      courseIds: courseIds,
+    // Create transaction in Firestore FIRST
+    const transactionRef = await addDoc(collection(db, 'transactions'), {
+      orderId,
+      userId,
+      courseIds,
+      courseNames,
+      cartItems: cartItems.map(item => ({
+        id: item.id,
+        title: item.title,
+        price: item.price
+      })),
       totalAmount: parseFloat(amount),
-      currency: 'TND',
+      currency: 'DT',
       status: 'pending',
-      orderId: orderId,
-      userEmail: cleanUserEmail,
-      userName: cleanUserName,
-      createdAt: serverTimestamp()
-    };
+      userEmail,
+      userName: userName || userEmail.split('@')[0],
+      createdAt: serverTimestamp(),
+      paymentMethod: 'paymee',
+      type: 'course_purchase'
+    });
 
-    const paymentDoc = await addDoc(paymentsRef, paymentRecord);
-    const paymentId = paymentDoc.id;
+    console.log('✅ Transaction created in Firestore:', transactionRef.id);
 
-    // 2. Save transaction
-    const transactionRef = doc(db, 'transactions', orderId);
-    const transactionData = {
-      orderId: orderId,
-      userId: userId,
-      courseIds: courseIds,
-      amount: parseFloat(amount),
-      currency: 'TND',
-      status: 'pending',
-      paymentProvider: 'paymee',
-      paymentId: paymentId,
-      userEmail: cleanUserEmail,
-      userName: cleanUserName,
-      paymentDetails: paymentPayload,
-      createdAt: serverTimestamp()
-    };
+    // ============================================
+    // CHANGED: Call Vercel API instead of Paymee directly
+    // ============================================
+    console.log('📡 Calling Vercel payment API...');
 
-    await setDoc(transactionRef, transactionData);
-
-    // 3. Call Paymee API
     const response = await axios.post(
-      `${PAYMEE_CONFIG.BASE_URL}/payments/create`,
-      paymentPayload,
+      '/api/create-payment',  // ← Your Vercel endpoint (no CORS!)
       {
-        headers: {
-          'Authorization': `Token ${PAYMEE_CONFIG.API_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
+        orderId,
+        userId,
+        amount: parseFloat(amount).toFixed(2),
+        userEmail,
+        userName: userName || userEmail.split('@')[0],
+        courseNames
+      },
+      {
+        headers: { 'Content-Type': 'application/json' },
         timeout: 15000
       }
     );
 
-    console.log('✅ API Response:', response.data);
-
-    // Extract token
-    let token = '';
-    if (response.data && response.data.data && response.data.data.token) {
-      token = response.data.data.token;
-    } else if (response.data && response.data.token) {
-      token = response.data.token;
+    // Validate response
+    if (!response.data?.paymentUrl) {
+      console.error('Invalid API response:', response.data);
+      throw new Error('Invalid response from payment API');
     }
-    
-    if (token) {
-      // Create payment URL
-      const paymentUrl = `https://sandbox.paymee.tn/gateway/${token}`;
-      
-      // Save URL
-      await setDoc(transactionRef, {
-        paymeeToken: token,
-        paymentUrl: paymentUrl,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
 
-      return {
-        success: true,
-        paymentUrl: paymentUrl,
-        orderId: orderId,
-        transactionId: token,
-        paymentId: paymentId
-      };
-    } 
-    else {
-      throw new Error('No payment token received');
-    }
+    console.log('✅ Payment URL received:', response.data.paymentUrl);
+
+    // Update transaction with payment URL
+    await updateDoc(doc(db, 'transactions', transactionRef.id), {
+      paymentUrl: response.data.paymentUrl,
+      paymeeToken: response.data.token || null
+    });
+
+    return {
+      success: true,
+      paymentUrl: response.data.paymentUrl,
+      orderId,
+      transactionId: transactionRef.id
+    };
 
   } catch (error) {
-    console.error('❌ Payment failed:', error);
+    console.error('❌ Payment initialization failed:', error);
     
-    let errorMessage = 'Payment failed';
+    // User-friendly error messages
+    let errorMessage = error.message;
+    
     if (error.response?.status === 401) {
-      errorMessage = 'Invalid API credentials';
+      errorMessage = 'Invalid payment credentials. Please contact support.';
+    } else if (error.response?.status === 500) {
+      errorMessage = 'Payment service error. Please try again.';
+    } else if (error.code === 'ERR_NETWORK') {
+      errorMessage = 'Network error. Please check your internet connection.';
+    } else if (error.response?.data?.error) {
+      errorMessage = error.response.data.error;
     }
-    
+
     throw new Error(errorMessage);
   }
 };
-// Verify Paymee payment
-export const verifyPaymeePayment = async (token) => {
-  try {
-    console.log('🔍 Verifying payment token:', token);
-    
-    const response = await axios.get(
-      `${PAYMEE_CONFIG.BASE_URL}/payments/${token}/check`,
-      {
-        headers: {
-          'Authorization': `Token ${PAYMEE_CONFIG.API_TOKEN}`
-        },
-        timeout: 10000
-      }
-    );
 
-    console.log('✅ Verification response:', response.data);
-    return response.data;
-  } catch (error) {
-    console.error('Verification error:', error);
-    // For testing, return success
-    return { 
-      status: 'paid', 
-      payment_status: true,
-      message: 'Payment verified' 
-    };
-  }
-};
-
-// Complete payment and enroll
+/**
+ * STEP 2: Complete Payment After Callback
+ * Verifies payment, enrolls user, and sends confirmation email
+ */
 export const completePaymentAndEnroll = async (orderId, userId) => {
   try {
-    console.log(`✅ Completing order ${orderId}`);
-    
-    // Get transaction
-    const transactionRef = doc(db, 'transactions', orderId);
-    const transactionDoc = await getDoc(transactionRef);
-    
-    if (!transactionDoc.exists()) {
-      throw new Error(`Order not found`);
+    console.log('🔄 Processing payment completion:', { orderId, userId });
+
+    // 1. Find transaction in Firestore
+    const transactionsRef = collection(db, 'transactions');
+    const q = query(transactionsRef, where('orderId', '==', orderId), where('userId', '==', userId));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      throw new Error('Transaction not found');
     }
-    
-    const transactionData = transactionDoc.data();
-    const { paymentId, courseIds } = transactionData;
-    
-    // Mark as completed
-    await setDoc(transactionRef, {
-      status: 'completed',
-      paidAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    
-    // Update payment
-    if (paymentId) {
-      const paymentRef = doc(db, 'payments', paymentId);
-      await setDoc(paymentRef, {
-        status: 'completed',
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-    }
-    
-    // Enroll in courses
-    if (courseIds && courseIds.length > 0) {
-      const { purchaseMultipleCourses } = await import('./course');
-      
-      const cartItems = courseIds.map((cid, index) => ({
-        id: cid,
-        title: `Course ${index + 1}`,
-        price: transactionData.amount / courseIds.length
-      }));
-      
-      const userData = {
-        email: transactionData.userEmail || '',
-        displayName: transactionData.userName || 'User',
-        totalAmount: transactionData.amount,
-        currency: 'TND'
-      };
-      
-      const result = await purchaseMultipleCourses(userId, cartItems, userData);
-      
+
+    const transactionDoc = querySnapshot.docs[0];
+    const transaction = transactionDoc.data();
+
+    console.log('📋 Transaction found:', transaction);
+
+    // Check if already completed
+    if (transaction.status === 'completed') {
+      console.log('ℹ️ Transaction already completed');
       return {
         success: true,
-        enrolledCourses: result.enrolledCourses || courseIds,
-        orderId: orderId,
-        paymentId: paymentId
-      };
-    }
-    
-    return {
-      success: true,
-      enrolledCourses: [],
-      orderId: orderId
-    };
-    
-  } catch (error) {
-    console.error('❌ Error:', error);
-    throw error;
-  }
-};
-
-// Test connection
-export const testPaymeeConnection = async () => {
-  try {
-    const configValidation = validatePaymeeConfig();
-    if (!configValidation.isValid) {
-      return { 
-        success: false, 
-        message: `Fix .env.local: ${configValidation.errors.join(', ')}` 
+        orderId,
+        amount: transaction.totalAmount,
+        enrolledCourses: transaction.enrolledCourses || transaction.courseIds,
+        message: 'Payment already processed'
       };
     }
 
-    console.log('🔗 Testing connection...');
+    // 2. Enroll user in courses
+    console.log('📚 Enrolling in courses:', transaction.courseIds);
     
-    const testPayload = {
-      vendor: PAYMEE_CONFIG.VENDOR_ID,
-      amount: "1.00",
-      note: "Test",
-      first_name: "Test",
-      last_name: "User",
-      email: "test@example.com",
-      phone_number: "20000000",
-      return_url: "http://localhost:3000/payment/success",
-      cancel_url: "http://localhost:3000/payment/cancel",
-      order_id: `TEST_${Date.now()}`
-    };
-
-    const response = await axios.post(
-      `${PAYMEE_CONFIG.BASE_URL}/payments/create`,
-      testPayload,
+    const { purchaseMultipleCourses } = await import('./course');
+    
+    const enrollmentResult = await purchaseMultipleCourses(
+      userId,
+      transaction.cartItems,
       {
-        headers: {
-          'Authorization': `Token ${PAYMEE_CONFIG.API_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
+        email: transaction.userEmail,
+        displayName: transaction.userName,
+        totalAmount: transaction.totalAmount,
+        currency: 'DT'
       }
     );
 
-    return { 
-      success: true, 
-      message: 'Connection successful!'
+    console.log('✅ Enrollment successful:', enrollmentResult);
+
+    // 3. Update transaction status
+    await updateDoc(transactionDoc.ref, {
+      status: 'completed',
+      completedAt: serverTimestamp(),
+      enrolledCourses: enrollmentResult.enrolledCourses || transaction.courseIds,
+      paymentCompletedAt: new Date().toISOString()
+    });
+
+    console.log('✅ Transaction updated to completed');
+
+    // 4. Send confirmation email
+    try {
+      await sendPaymentEmail({
+        orderId,
+        userName: transaction.userName,
+        userEmail: transaction.userEmail,
+        courseNames: transaction.courseNames,
+        amount: transaction.totalAmount,
+        enrolledCourses: enrollmentResult.enrolledCourses || transaction.courseIds
+      });
+      console.log('✅ Confirmation email sent');
+    } catch (emailError) {
+      console.warn('⚠️ Email sending failed (non-critical):', emailError);
+      // Don't fail the whole process if email fails
+    }
+
+    return {
+      success: true,
+      orderId,
+      amount: transaction.totalAmount,
+      enrolledCourses: enrollmentResult.enrolledCourses || transaction.courseIds,
+      courseNames: transaction.courseNames,
+      message: 'Payment completed successfully'
     };
+
   } catch (error) {
-    console.error('❌ Test failed:', error);
-    return { 
-      success: false, 
-      message: error.message || 'Connection failed'
+    console.error('❌ Payment completion failed:', error);
+    
+    // Try to update transaction status to failed
+    try {
+      const transactionsRef = collection(db, 'transactions');
+      const q = query(transactionsRef, where('orderId', '==', orderId));
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        await updateDoc(snapshot.docs[0].ref, {
+          status: 'failed',
+          error: error.message,
+          failedAt: serverTimestamp()
+        });
+      }
+    } catch (updateError) {
+      console.error('Failed to update transaction status:', updateError);
+    }
+
+    return {
+      success: false,
+      error: error.message,
+      orderId
     };
+  }
+};
+
+/**
+ * Get user's transaction history
+ */
+export const getUserTransactions = async (userId) => {
+  try {
+    const transactionsRef = collection(db, 'transactions');
+    const q = query(transactionsRef, where('userId', '==', userId));
+    const snapshot = await getDocs(q);
+
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
+      completedAt: doc.data().completedAt?.toDate?.() || doc.data().completedAt
+    })).sort((a, b) => {
+      const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(0);
+      const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(0);
+      return dateB - dateA;
+    });
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    return [];
   }
 };
 
 export default {
   initPaymeePayment,
-  verifyPaymeePayment,
   completePaymentAndEnroll,
-  testPaymeeConnection,
+  getUserTransactions,
   validatePaymeeConfig
 };
